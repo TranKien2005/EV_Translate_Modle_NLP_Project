@@ -1,0 +1,19 @@
+# Core Deep Learning
+torch>=2.0.0
+
+# Data Processing & NLP
+datasets>=2.14.0
+sentencepiece>=0.1.99
+
+# Evaluation Metrics
+sacrebleu>=2.3.1
+google-generativeai>=0.3.0
+
+# Visualization & Logging
+seaborn>=0.12.0
+tensorboard>=2.13.0
+tqdm>=4.65.0
+
+# Jupyter Notebook Support
+jupyter>=1.0.0
+ipykernel>=6.0.0
