@@ -51,11 +51,14 @@ def download_phomt(
     print("="*60)
     
     # Create output directory
-    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Download zip file
+    # Download zip file to a temp location
     print(f"\n1. Downloading {DATASET_FILE}...")
     print("   (This may take a while, ~500MB)")
+    
+    import tempfile
+    temp_dir = Path(tempfile.mkdtemp())
     
     try:
         zip_path = hf_hub_download(
@@ -63,7 +66,7 @@ def download_phomt(
             filename=DATASET_FILE,
             repo_type="dataset",
             token=token,
-            local_dir=str(output_dir.parent),
+            local_dir=str(temp_dir),
             local_dir_use_symlinks=False
         )
         print(f"   ✓ Downloaded to: {zip_path}")
@@ -75,19 +78,39 @@ def download_phomt(
         print("2. Provide a valid Hugging Face token with --token")
         sys.exit(1)
     
-    # Extract zip file
+    # Extract zip file to temp, then move to correct location
     print(f"\n2. Extracting {DATASET_FILE}...")
     try:
+        extract_temp = temp_dir / "extracted"
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(output_dir.parent)
-        print(f"   ✓ Extracted to: {output_dir.parent}")
+            zip_ref.extractall(extract_temp)
+        
+        # Find where detokenization folder is
+        detok_path = None
+        for root, dirs, files in os.walk(extract_temp):
+            if 'detokenization' in dirs:
+                detok_path = Path(root) / 'detokenization'
+                break
+        
+        if detok_path is None:
+            print("   ❌ Could not find 'detokenization' folder in zip")
+            sys.exit(1)
+        
+        # Move detokenization to output_dir
+        import shutil
+        target_detok = output_dir / "detokenization"
+        if target_detok.exists():
+            shutil.rmtree(target_detok)
+        shutil.move(str(detok_path), str(target_detok))
+        
+        print(f"   ✓ Extracted to: {output_dir}")
+        
+        # Cleanup temp
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        
     except Exception as e:
         print(f"   ❌ Error extracting: {e}")
         sys.exit(1)
-    
-    # Clean up zip file (optional)
-    # os.remove(zip_path)
-    # print(f"   ✓ Deleted zip file")
     
     # Verify extraction
     print("\n3. Verifying extracted files...")
@@ -109,7 +132,7 @@ def download_phomt(
                 line_count = sum(1 for _ in f)
             print(f"   ✓ {description}: {line_count:,} lines")
         else:
-            print(f"   ❌ {description}: NOT FOUND")
+            print(f"   ❌ {description}: NOT FOUND at {full_path}")
             all_found = False
     
     if all_found:
