@@ -36,8 +36,8 @@ class PathConfig:
     def setup_for_environment(self, env: str, project_root: Path):
         """Setup paths based on environment."""
         if env == 'kaggle':
-            # Kaggle-specific paths
-            self.data_dir = Path('/kaggle/input/')
+            # Kaggle-specific paths (/kaggle/working is writable, /kaggle/input is read-only)
+            self.data_dir = Path('/kaggle/working/data/')
             self.checkpoint_dir = Path('/kaggle/working/checkpoints/')
             self.log_dir = Path('/kaggle/working/logs/')
         elif env == 'colab':
