@@ -58,8 +58,8 @@ model:
 # Training Configuration
 # -----------------------------------------------------------------------------
 training:
-  batch_size: 32         # Actual batch size per step
-  gradient_accumulation_steps: 2  # Effective batch = 32 * 2 = 64
+  batch_size: 64         # Increased for faster training
+  gradient_accumulation_steps: 1  # Effective batch = 64
   epochs: 15             # Reduced for Kaggle time limit
   learning_rate: 0.0001
   warmup_steps: 6000     # Increased for stable training
@@ -117,5 +117,5 @@ logging:
 # -----------------------------------------------------------------------------
 hardware:
   device: "auto"          # auto, cuda, cpu
-  num_workers: 4
+  num_workers: 8          # Increased for faster data loading
   pin_memory: true

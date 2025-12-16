@@ -32,9 +32,14 @@ def collate_fn(
     has_tokens = 'src_tokens' in batch[0]
     
     if has_tokens:
-        # Get sequences
-        src_seqs = [torch.tensor(item['src_tokens']) for item in batch]
-        tgt_seqs = [torch.tensor(item['tgt_tokens']) for item in batch]
+        # Get sequences - handle both tensor and list inputs
+        def to_tensor(x):
+            if isinstance(x, torch.Tensor):
+                return x
+            return torch.tensor(x, dtype=torch.long)
+        
+        src_seqs = [to_tensor(item['src_tokens']) for item in batch]
+        tgt_seqs = [to_tensor(item['tgt_tokens']) for item in batch]
         
         # Pad sequences
         src_padded = pad_sequence(src_seqs, batch_first=True, padding_value=src_pad_idx)
