@@ -156,7 +156,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output-dir",
         type=str,
-        default=str(DEFAULT_OUTPUT_DIR),
+        default=None,  # Will be set from config if not provided
         help="Output directory for extracted data"
     )
     parser.add_argument(
@@ -173,16 +173,26 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    # Load token from config if not provided
-    if args.token is None:
-        try:
-            sys.path.insert(0, str(Path(__file__).parent.parent))
-            from src.config import load_config
-            config = load_config()
+    # Load config for token and paths
+    try:
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from src.config import load_config
+        config = load_config()
+        
+        # Use token from config if not provided
+        if args.token is None:
             args.token = config.hf_token
-            print(f"Using token from config.yaml")
-        except Exception:
-            pass
+            if args.token:
+                print(f"Using token from .env")
+        
+        # Use output dir from config if not provided
+        if args.output_dir is None:
+            args.output_dir = str(config.paths.data_dir / "PhoMT")
+            print(f"Using data dir from config: {args.output_dir}")
+    except Exception as e:
+        print(f"Could not load config: {e}")
+        if args.output_dir is None:
+            args.output_dir = str(DEFAULT_OUTPUT_DIR)
     
     output_dir = download_phomt(
         output_dir=Path(args.output_dir),

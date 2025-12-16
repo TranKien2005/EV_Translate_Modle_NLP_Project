@@ -177,12 +177,25 @@ def main():
     print("="*60)
     print(f"Config loaded | Env: {config.env}")
     
-    # Setup paths
+    # Setup paths - use data_dir for data files
     project_root = config.project_root
-    train_src = project_root / config.train_src
-    train_tgt = project_root / config.train_tgt
-    val_src = project_root / config.val_src
-    val_tgt = project_root / config.val_tgt
+    data_dir = config.paths.data_dir
+    
+    # Source files are relative to data_dir, not project_root
+    # config.train_src is like "data/PhoMT/..." but we need just "PhoMT/..."
+    def get_data_path(config_path: str) -> Path:
+        """Convert config path to actual path using data_dir."""
+        # Remove 'data/' prefix if exists
+        if config_path.startswith('data/'):
+            relative_path = config_path[5:]  # Remove 'data/'
+        else:
+            relative_path = config_path
+        return data_dir / relative_path
+    
+    train_src = get_data_path(config.train_src)
+    train_tgt = get_data_path(config.train_tgt)
+    val_src = get_data_path(config.val_src)
+    val_tgt = get_data_path(config.val_tgt)
     
     # Check if raw data exists
     if not train_src.exists():
@@ -249,8 +262,8 @@ def main():
     )
     
     # Process test data (if exists)
-    test_src = project_root / config.test_src
-    test_tgt = project_root / config.test_tgt
+    test_src = get_data_path(config.test_src)
+    test_tgt = get_data_path(config.test_tgt)
     test_output = config.paths.data_dir / "processed" / "test.pt"
     
     if test_src.exists() and test_tgt.exists():
