@@ -60,7 +60,7 @@ model:
 training:
   batch_size: 64         # Increased for faster training
   gradient_accumulation_steps: 1  # Effective batch = 64
-  epochs: 15             # Reduced for Kaggle time limit
+  epochs: 10             # Reduced for Kaggle time limit
   learning_rate: 0.0001
   warmup_steps: 6000     # Increased for stable training
   label_smoothing: 0.15  # Increased for better generalization
