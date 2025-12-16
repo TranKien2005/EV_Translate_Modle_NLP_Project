@@ -154,9 +154,9 @@ class Translator:
 
 
 def load_translator(
-    checkpoint_path: str,
-    vocab_src_path: str,
-    vocab_tgt_path: str,
+    checkpoint_path: Optional[str] = None,
+    vocab_src_path: Optional[str] = None,
+    vocab_tgt_path: Optional[str] = None,
     config_path: Optional[str] = None,
     device: str = "auto"
 ) -> Translator:
@@ -164,9 +164,9 @@ def load_translator(
     Load a trained translator.
     
     Args:
-        checkpoint_path: Path to model checkpoint
-        vocab_src_path: Path to source vocabulary JSON
-        vocab_tgt_path: Path to target vocabulary JSON
+        checkpoint_path: Path to model checkpoint (auto-resolved from config if None)
+        vocab_src_path: Path to source vocabulary (auto-resolved from config if None)
+        vocab_tgt_path: Path to target vocabulary (auto-resolved from config if None)
         config_path: Optional path to config file
         device: Device to use
     
@@ -174,8 +174,16 @@ def load_translator(
         Configured Translator instance
     """
     # Load config
-    config = load_config(config_path) if config_path else None
+    config = load_config(config_path)
     device = get_device(device)
+    
+    # Auto-resolve paths from config if not provided
+    if checkpoint_path is None:
+        checkpoint_path = str(config.get_best_model_path())
+    if vocab_src_path is None:
+        vocab_src_path = str(config.get_tokenizer_src_path())
+    if vocab_tgt_path is None:
+        vocab_tgt_path = str(config.get_tokenizer_tgt_path())
     
     # Load tokenizers (SentencePiece models)
     tokenizer_src = SentencePieceTokenizer(vocab_src_path)
@@ -185,12 +193,12 @@ def load_translator(
     model = Transformer(
         src_vocab_size=tokenizer_src.vocab_size,
         tgt_vocab_size=tokenizer_tgt.vocab_size,
-        d_model=config.d_model if config else 512,
-        num_heads=config.num_heads if config else 8,
-        num_encoder_layers=config.num_encoder_layers if config else 6,
-        num_decoder_layers=config.num_decoder_layers if config else 6,
-        d_ff=config.d_ff if config else 2048,
-        max_seq_len=config.max_seq_len if config else 128,
+        d_model=config.d_model,
+        num_heads=config.num_heads,
+        num_encoder_layers=config.num_encoder_layers,
+        num_decoder_layers=config.num_decoder_layers,
+        d_ff=config.d_ff,
+        max_seq_len=config.max_seq_len,
         dropout=0.0,  # No dropout at inference
     )
     

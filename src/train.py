@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 from torch.optim.lr_scheduler import LambdaLR
+from torch.cuda.amp import autocast, GradScaler
 from typing import Optional, Dict, Any
 from pathlib import Path
 from tqdm import tqdm
@@ -69,6 +70,10 @@ class Trainer:
         self.current_epoch = 0
         self.global_step = 0
         self.best_val_loss = float('inf')
+        
+        # Mixed Precision
+        self.use_amp = torch.cuda.is_available()
+        self.scaler = GradScaler(enabled=self.use_amp)
     
     def load_tokenizers(self):
         """Load pre-trained tokenizers."""
@@ -304,22 +309,25 @@ class Trainer:
             tgt_input = tgt[:, :-1]
             tgt_target = tgt[:, 1:]
             
-            # Forward
-            output = self.model(src, tgt_input)
+            # Forward with Mixed Precision
+            with autocast(enabled=self.use_amp):
+                output = self.model(src, tgt_input)
+                
+                # Compute loss (scaled for gradient accumulation)
+                output = output.reshape(-1, output.size(-1))
+                tgt_target = tgt_target.reshape(-1)
+                loss = self.criterion(output, tgt_target)
+                loss = loss / self.config.gradient_accumulation_steps  # Scale loss
             
-            # Compute loss (scaled for gradient accumulation)
-            output = output.reshape(-1, output.size(-1))
-            tgt_target = tgt_target.reshape(-1)
-            loss = self.criterion(output, tgt_target)
-            loss = loss / self.config.gradient_accumulation_steps  # Scale loss
-            
-            # Backward (accumulate gradients)
-            loss.backward()
+            # Backward with scaler (accumulate gradients)
+            self.scaler.scale(loss).backward()
             
             # Update weights every N steps
             if (batch_idx + 1) % self.config.gradient_accumulation_steps == 0:
+                self.scaler.unscale_(self.optimizer)
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.gradient_clip)
-                self.optimizer.step()
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
                 self.scheduler.step()
                 self.optimizer.zero_grad()
             
@@ -353,11 +361,12 @@ class Trainer:
             tgt_input = tgt[:, :-1]
             tgt_target = tgt[:, 1:]
             
-            output = self.model(src, tgt_input)
-            
-            output = output.reshape(-1, output.size(-1))
-            tgt_target = tgt_target.reshape(-1)
-            loss = self.criterion(output, tgt_target)
+            with autocast(enabled=self.use_amp):
+                output = self.model(src, tgt_input)
+                
+                output = output.reshape(-1, output.size(-1))
+                tgt_target = tgt_target.reshape(-1)
+                loss = self.criterion(output, tgt_target)
             
             num_tokens = (tgt_target != SentencePieceTokenizer.PAD_IDX).sum().item()
             metrics.update(loss.item(), num_tokens)

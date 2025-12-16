@@ -117,5 +117,5 @@ logging:
 # -----------------------------------------------------------------------------
 hardware:
   device: "auto"          # auto, cuda, cpu
-  num_workers: 8          # Increased for faster data loading
+  num_workers: 4          # 4 for production
   pin_memory: true
