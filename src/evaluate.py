@@ -434,36 +434,42 @@ if __name__ == "__main__":
         interactive_translate(translator)
     
     elif args.test or args.val:
-        # Determine paths
-        root_dir = config.project_root
+        # Helper to convert config path to actual path
+        def get_data_path(config_path: str):
+            """Convert config path (data/...) to actual path using data_dir."""
+            if config_path.startswith('data/'):
+                relative_path = config_path[5:]  # Remove 'data/'
+            else:
+                relative_path = config_path
+            return config.paths.data_dir / relative_path
         
         if args.test:
             print("Loading TEST set...")
             if config.data_source == "processed":
-                data_path = root_dir / config.processed_test
+                data_path = get_data_path(config.processed_test)
                 ds = ProcessedDataset(str(data_path))
                 src_texts = [translator.tokenizer_src.decode(ids) for ids in ds.src_tokens]
                 tgt_texts = [translator.tokenizer_tgt.decode(ids) for ids in ds.tgt_tokens]
             else:
-                src_path = root_dir / config.test_src
-                tgt_path = root_dir / config.test_tgt
+                src_path = get_data_path(config.test_src)
+                tgt_path = get_data_path(config.test_tgt)
                 src_texts, tgt_texts = LocalTranslationDataset.load_texts(str(src_path), str(tgt_path))
             
-            output_dir = root_dir / "logs" / "test_results"
+            output_dir = config.paths.log_dir / "test_results"
             
         else: # args.val
             print("Loading VALIDATION set...")
             if config.data_source == "processed":
-                data_path = root_dir / config.processed_val
+                data_path = get_data_path(config.processed_val)
                 ds = ProcessedDataset(str(data_path))
                 src_texts = [translator.tokenizer_src.decode(ids) for ids in ds.src_tokens]
                 tgt_texts = [translator.tokenizer_tgt.decode(ids) for ids in ds.tgt_tokens]
             else:
-                src_path = root_dir / config.val_src
-                tgt_path = root_dir / config.val_tgt
+                src_path = get_data_path(config.val_src)
+                tgt_path = get_data_path(config.val_tgt)
                 src_texts, tgt_texts = LocalTranslationDataset.load_texts(str(src_path), str(tgt_path))
                 
-            output_dir = root_dir / "logs" / "val_results"
+            output_dir = config.paths.log_dir / "val_results"
 
         # Run evaluation
         evaluate_model(
