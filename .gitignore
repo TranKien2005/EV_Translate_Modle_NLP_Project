@@ -1,0 +1,82 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Data files (large files)
+data/*.csv
+data/*.tsv
+data/*.json
+data/*.txt
+data/*.pt
+data/*.pkl
+data/*.bin
+data/*.zip
+data/PhoMT/
+data/processed/
+data/raw/
+!data/.gitkeep
+
+# Processed data
+processed/
+*.h5
+*.hdf5
+
+# Model checkpoints (large files)
+checkpoints/*.pt
+checkpoints/*.pth
+checkpoints/*.ckpt
+checkpoints/*.bin
+!checkpoints/.gitkeep
+
+# Logs
+logs/*.log
+logs/tensorboard/
+logs/train_*.log
+*.log
+!logs/.gitkeep
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Hugging Face cache
+.cache/
+
+# Weights & Biases
+wandb/
+
+# Environment variables
+.env
+.env.local
+
+# Build
+build/
+dist/

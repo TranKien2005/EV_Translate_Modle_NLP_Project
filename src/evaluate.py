@@ -1,225 +1,480 @@
-"""Reusable evaluation helpers for notebooks.
-
-This module exposes functions that the notebook `notebooks/05_evaluation.ipynb`
-can import and call. It does NOT run anything on import.
 """
-import json
-from pathlib import Path
-import pickle
-import time
-from typing import Optional, Dict, Any, List, Tuple
+Evaluation and inference script for Transformer translation model.
+"""
 
-import sentencepiece as spm
 import torch
-from sacrebleu import corpus_bleu
+import json
+from datetime import datetime
+from typing import Optional, List, Dict
+from pathlib import Path
+from tqdm import tqdm
 
-from src.model import Transformer
+from src.config import Config, load_config
+from src.models import Transformer
+from src.data.tokenizer import SentencePieceTokenizer
 from src.utils import get_device
+from src.utils.metrics import compute_bleu
 
 
-def load_tokenizers_and_config(project_root: Optional[Path] = None) -> Tuple[Dict[str, Any], spm.SentencePieceProcessor, spm.SentencePieceProcessor]:
-    """Load `tokenizer_info.json` and SentencePiece processors.
-
-    Args:
-        project_root: path to project root; if None auto-detected.
-    Returns:
-        tokenizer_info, sp_vi, sp_en
+class Translator:
     """
-    if project_root is None:
-        project_root = Path(__file__).resolve().parents[1]
-
-    tokenizer_info_path = project_root / 'data' / 'processed' / 'tokenizer_info.json'
-    with open(tokenizer_info_path, 'r', encoding='utf-8') as f:
-        tokenizer_info = json.load(f)
-
-    # Resolve sentencepiece model paths robustly. tokenizer_info may contain
-    # paths that are relative to different working directories (notebook vs project).
-    def _resolve_model_path(key: str) -> Path:
-        raw = Path(tokenizer_info[key])
-        candidates = [raw]
-        # candidate relative to project root
-        candidates.append(project_root / raw)
-        # common location: project_root/data/processed/<name>
-        candidates.append(project_root / 'data' / 'processed' / raw.name)
-        for p in candidates:
-            try:
-                if p.exists():
-                    return p
-            except Exception:
-                # ignore permission / unusual path errors and continue
-                pass
-        # If none found, return the last candidate (will raise when loading)
-        return candidates[-1]
-
-    vi_path = _resolve_model_path('vi_model')
-    en_path = _resolve_model_path('en_model')
-
-    sp_vi = spm.SentencePieceProcessor()
-    sp_en = spm.SentencePieceProcessor()
-    if not vi_path.exists():
-        tried = [str(p) for p in [Path(tokenizer_info['vi_model']), project_root / Path(tokenizer_info['vi_model']), project_root / 'data' / 'processed' / Path(tokenizer_info['vi_model']).name]]
-        raise OSError(f"spm_vi.model not found. Tried: {tried}")
-    if not en_path.exists():
-        tried = [str(p) for p in [Path(tokenizer_info['en_model']), project_root / Path(tokenizer_info['en_model']), project_root / 'data' / 'processed' / Path(tokenizer_info['en_model']).name]]
-        raise OSError(f"spm_en.model not found. Tried: {tried}")
-
-    sp_vi.load(str(vi_path))
-    sp_en.load(str(en_path))
-
-    return tokenizer_info, sp_vi, sp_en
-
-
-def build_and_load_model(checkpoint_path: str, tokenizer_info: Dict[str, Any], device: Optional[torch.device] = None, model_kwargs: Optional[Dict[str, Any]] = None) -> Transformer:
-    """Instantiate the `Transformer` and load the checkpoint.
-
-    Args:
-        checkpoint_path: path to checkpoint file (can be relative to project root)
-        tokenizer_info: dict loaded from `tokenizer_info.json`
-        device: torch device; if None uses `get_device()`
-        model_kwargs: override hyperparameters for model construction
-    Returns:
-        model (on device)
+    Translator class for inference.
     """
-    project_root = Path(__file__).resolve().parents[1]
-    if device is None:
-        device = get_device()
+    
+    def __init__(
+        self,
+        model: Transformer,
+        tokenizer_src: SentencePieceTokenizer,
+        tokenizer_tgt: SentencePieceTokenizer,
+        device: str = "cpu",
+        max_len: int = 128
+    ):
+        """
+        Args:
+            model: Trained Transformer model
+            tokenizer_src: Source tokenizer
+            tokenizer_tgt: Target tokenizer
+            device: Device to use
+            max_len: Maximum generation length
+        """
+        self.model = model.to(device)
+        self.model.eval()
+        self.tokenizer_src = tokenizer_src
+        self.tokenizer_tgt = tokenizer_tgt
+        self.device = device
+        self.max_len = max_len
+    
+    @torch.no_grad()
+    def translate(
+        self,
+        text: str,
+        beam_size: int = 4,
+        return_attention: bool = False
+    ) -> str:
+        """
+        Translate a single sentence using beam search.
+        
+        Args:
+            text: Source text to translate
+            beam_size: Beam size (1 = greedy, >1 = beam search)
+            return_attention: Whether to return attention weights
+        
+        Returns:
+            Translated text
+        """
+        # Tokenize source
+        src_tokens = self.tokenizer_src.encode(text)
+        src = torch.tensor([src_tokens]).to(self.device)
+        
+        # Encode source
+        src_mask = self.model.create_src_mask(src)
+        encoder_output = self.model.encode(src, src_mask)
+        
+        if beam_size == 1:
+            # Greedy decoding (faster)
+            return self._greedy_decode(encoder_output, src_mask)
+        else:
+            # Beam search (better quality)
+            return self._beam_search(encoder_output, src_mask, beam_size)
+    
+    def _greedy_decode(self, encoder_output, src_mask) -> str:
+        """Greedy decoding - fast but lower quality."""
+        tgt_tokens = [SentencePieceTokenizer.BOS_IDX]
+        
+        for _ in range(self.max_len):
+            tgt = torch.tensor([tgt_tokens]).to(self.device)
+            tgt_mask = self.model.create_tgt_mask(tgt)
+            
+            output = self.model.decode(tgt, encoder_output, src_mask, tgt_mask)
+            next_token = output[0, -1].argmax().item()
+            tgt_tokens.append(next_token)
+            
+            if next_token == SentencePieceTokenizer.EOS_IDX:
+                break
+        
+        return self.tokenizer_tgt.decode(tgt_tokens)
+    
+    def _beam_search(self, encoder_output, src_mask, beam_size: int = 4) -> str:
+        """Beam search decoding - slower but better quality."""
+        import torch.nn.functional as F
+        
+        # Initialize beams: list of (tokens, log_prob)
+        beams = [([SentencePieceTokenizer.BOS_IDX], 0.0)]
+        
+        # Expand encoder output for beam search
+        encoder_output = encoder_output.expand(beam_size, -1, -1)
+        src_mask = src_mask.expand(beam_size, -1, -1, -1) if src_mask is not None else None
+        
+        for step in range(self.max_len):
+            all_candidates = []
+            
+            for tokens, score in beams:
+                # Skip completed sequences
+                if tokens[-1] == SentencePieceTokenizer.EOS_IDX:
+                    all_candidates.append((tokens, score))
+                    continue
+                
+                # Decode
+                tgt = torch.tensor([tokens]).to(self.device)
+                tgt_mask = self.model.create_tgt_mask(tgt)
+                
+                output = self.model.decode(
+                    tgt, encoder_output[:1], 
+                    src_mask[:1] if src_mask is not None else None, 
+                    tgt_mask
+                )
+                
+                # Get log probabilities for next token
+                log_probs = F.log_softmax(output[0, -1], dim=-1)
+                
+                # Get top-k candidates
+                topk_log_probs, topk_indices = log_probs.topk(beam_size)
+                
+                for log_prob, idx in zip(topk_log_probs.tolist(), topk_indices.tolist()):
+                    new_tokens = tokens + [idx]
+                    new_score = score + log_prob
+                    all_candidates.append((new_tokens, new_score))
+            
+            # Select top beam_size candidates
+            all_candidates.sort(key=lambda x: x[1], reverse=True)
+            beams = all_candidates[:beam_size]
+            
+            # Check if all beams are complete
+            if all(b[0][-1] == SentencePieceTokenizer.EOS_IDX for b in beams):
+                break
+        
+        # Return best sequence
+        best_tokens = beams[0][0]
+        return self.tokenizer_tgt.decode(best_tokens)
+    
+    @torch.no_grad()
+    def translate_batch(self, texts: List[str], beam_size: int = 4) -> List[str]:
+        """Translate a batch of sentences."""
+        return [self.translate(text, beam_size=beam_size) for text in texts]
 
-    defaults = dict(
-        src_vocab_size=tokenizer_info['vi_vocab_size'],
-        tgt_vocab_size=tokenizer_info['en_vocab_size'],
-        d_model=512,
-        num_heads=8,
-        num_encoder_layers=6,
-        num_decoder_layers=6,
-        d_ff=2048,
-        max_len=tokenizer_info['max_length'],
-        dropout=0.1,
-        pad_idx=tokenizer_info['pad_id'],
+
+def load_translator(
+    checkpoint_path: str,
+    vocab_src_path: str,
+    vocab_tgt_path: str,
+    config_path: Optional[str] = None,
+    device: str = "auto"
+) -> Translator:
+    """
+    Load a trained translator.
+    
+    Args:
+        checkpoint_path: Path to model checkpoint
+        vocab_src_path: Path to source vocabulary JSON
+        vocab_tgt_path: Path to target vocabulary JSON
+        config_path: Optional path to config file
+        device: Device to use
+    
+    Returns:
+        Configured Translator instance
+    """
+    # Load config
+    config = load_config(config_path) if config_path else None
+    device = get_device(device)
+    
+    # Load tokenizers (SentencePiece models)
+    tokenizer_src = SentencePieceTokenizer(vocab_src_path)
+    tokenizer_tgt = SentencePieceTokenizer(vocab_tgt_path)
+    
+    # Create model
+    model = Transformer(
+        src_vocab_size=tokenizer_src.vocab_size,
+        tgt_vocab_size=tokenizer_tgt.vocab_size,
+        d_model=config.d_model if config else 512,
+        num_heads=config.num_heads if config else 8,
+        num_encoder_layers=config.num_encoder_layers if config else 6,
+        num_decoder_layers=config.num_decoder_layers if config else 6,
+        d_ff=config.d_ff if config else 2048,
+        max_seq_len=config.max_seq_len if config else 128,
+        dropout=0.0,  # No dropout at inference
     )
-    if model_kwargs:
-        defaults.update(model_kwargs)
-
-    model = Transformer(**defaults)
-
-    ckpt = Path(checkpoint_path)
-    if not ckpt.exists():
-        ckpt = project_root / checkpoint_path
-    if not ckpt.exists():
-        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
-
-    state = torch.load(str(ckpt), map_location=device)
-    if isinstance(state, dict) and 'model_state_dict' in state:
-        model.load_state_dict(state['model_state_dict'])
-    else:
-        model.load_state_dict(state)
-
-    model.to(device)
-    model.eval()
-    return model
+    
+    # Load checkpoint
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    print(f"✓ Loaded model from {checkpoint_path}")
+    
+    return Translator(
+        model=model,
+        tokenizer_src=tokenizer_src,
+        tokenizer_tgt=tokenizer_tgt,
+        device=str(device),
+        max_len=config.max_seq_len if config else 128
+    )
 
 
-def _decode_with_sentencepiece(sp: spm.SentencePieceProcessor, ids: List[int]) -> str:
-    """Robust decode handling different sentencepiece API names."""
-    try:
-        return sp.decode_ids(ids)
-    except Exception:
+def save_evaluation_results(
+    results: Dict,
+    predictions: List[str],
+    source_texts: List[str],
+    reference_texts: List[str],
+    output_dir: str,
+    checkpoint_name: str = "model",
+    num_examples: int = 10
+):
+    """
+    Save evaluation results to files with sample examples.
+    
+    Args:
+        results: Evaluation results (BLEU, Gemini, etc.)
+        predictions: List of model predictions
+        source_texts: List of source sentences
+        reference_texts: List of reference translations
+        output_dir: Output directory
+        checkpoint_name: Name of checkpoint for file naming
+        num_examples: Number of examples to display (default: 10)
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    
+    # Save metrics to JSON
+    metrics = {
+        "bleu": results.get("bleu", 0),
+        "precisions": results.get("precisions", []),
+        "brevity_penalty": results.get("bp", 0),
+        "gemini_score": results.get("gemini_score", None),
+        "num_samples": len(predictions),
+        "timestamp": timestamp,
+        "checkpoint": checkpoint_name
+    }
+    
+    metrics_path = output_dir / f"eval_{timestamp}.json"
+    with open(metrics_path, 'w', encoding='utf-8') as f:
+        json.dump(metrics, f, indent=2, ensure_ascii=False)
+    print(f"✓ Metrics saved to: {metrics_path}")
+    
+    # Save all translations
+    translations_dir = output_dir / "translations"
+    translations_dir.mkdir(exist_ok=True)
+    
+    translations_path = translations_dir / f"translations_{timestamp}.txt"
+    with open(translations_path, 'w', encoding='utf-8') as f:
+        for i, (src, ref, pred) in enumerate(zip(source_texts, reference_texts, predictions)):
+            f.write(f"[{i+1}]\n")
+            f.write(f"SRC: {src}\n")
+            f.write(f"REF: {ref}\n")
+            f.write(f"PRD: {pred}\n")
+            f.write("-" * 50 + "\n")
+    print(f"✓ Translations saved to: {translations_path}")
+    
+    # Print sample examples to console
+    print(f"\n{'='*60}")
+    print(f"📝 Sample Translations ({min(num_examples, len(predictions))} examples)")
+    print(f"{'='*60}")
+    
+    for i in range(min(num_examples, len(predictions))):
+        print(f"\n[Example {i+1}]")
+        print(f"  🔹 SRC: {source_texts[i][:80]}{'...' if len(source_texts[i]) > 80 else ''}")
+        print(f"  🔹 REF: {reference_texts[i][:80]}{'...' if len(reference_texts[i]) > 80 else ''}")
+        print(f"  🔹 PRD: {predictions[i][:80]}{'...' if len(predictions[i]) > 80 else ''}")
+    
+    print(f"\n{'='*60}")
+    
+    return metrics_path, translations_path
+
+
+from src.utils.gemini_eval import GeminiEvaluator
+
+def evaluate_model(
+    translator: Translator,
+    source_texts: List[str],
+    reference_texts: List[str],
+    config: Optional[Config] = None,
+    output_dir: Optional[str] = None,
+    checkpoint_name: str = "model",
+    run_gemini: bool = False
+) -> Dict[str, float]:
+    """
+    Evaluate model on a test set using BLEU and optionally Gemini.
+    
+    Args:
+        translator: Translator instance
+        source_texts: List of source sentences
+        reference_texts: List of reference translations
+        config: Config object for limits
+        output_dir: Optional directory to save results
+        checkpoint_name: Name of checkpoint for naming files
+        run_gemini: Whether to run Gemini evaluation
+    
+    Returns:
+        Dictionary with scores
+    """
+    # 1. BLEU Evaluation
+    # Limit samples for BLEU if configured
+    max_bleu = config.eval_max_samples_bleu if config else 1000
+    n_bleu = min(len(source_texts), max_bleu)
+    
+    print(f"\nEvaluating BLEU on first {n_bleu} samples...")
+    predictions = []
+    
+    # Translate batch for BLEU
+    # Using a subset for speed
+    subset_src = source_texts[:n_bleu]
+    subset_ref = reference_texts[:n_bleu]
+    
+    for text in tqdm(subset_src):
+        pred = translator.translate(text)
+        predictions.append(pred)
+    
+    # Compute BLEU
+    bleu_result = compute_bleu(predictions, subset_ref)
+    
+    print(f"\n{'='*40}")
+    print(f"BLEU Score: {bleu_result['bleu']:.2f}")
+    print(f"Precisions: {[f'{p:.1f}' for p in bleu_result['precisions']]}")
+    print(f"Brevity Penalty: {bleu_result['bp']:.4f}")
+    
+    results = bleu_result
+    
+    # 2. Gemini Evaluation (Optional)
+    if run_gemini:
+        print(f"\nEvaluating Gemini Score...")
         try:
-            return sp.DecodeIds(ids)
-        except Exception:
-            if hasattr(sp, 'IdToPiece'):
-                pieces = [sp.IdToPiece(int(i)) for i in ids]
-            elif hasattr(sp, 'id_to_piece'):
-                pieces = [sp.id_to_piece(int(i)) for i in ids]
+            gemini = GeminiEvaluator()
+            max_gemini = config.eval_max_samples_gemini if config else 200
+            
+            # Use same predictions if n_bleu >= max_gemini, else translate more?
+            # Typically max_gemini (200) < max_bleu (1000), so we reuse predictions
+            
+            gemini_src = subset_src[:max_gemini]
+            gemini_ref = subset_ref[:max_gemini]
+            gemini_pred = predictions[:max_gemini]
+            
+            gemini_results = gemini.evaluate_batch(
+                sources=gemini_src,
+                references=gemini_ref,
+                candidates=gemini_pred,
+                max_samples=max_gemini
+            )
+            
+            results.update(gemini_results)
+            print(f"Gemini Score: {gemini_results['gemini_score']:.2f} (on {gemini_results['num_samples']} samples)")
+            
+        except Exception as e:
+            print(f"Gemini evaluation failed: {e}")
+    
+    print(f"{'='*40}")
+    
+    # Save results if output_dir is provided
+    if output_dir:
+        save_evaluation_results(
+            results=results,
+            predictions=predictions, # Saves all generated predictions (n_bleu)
+            source_texts=subset_src,
+            reference_texts=subset_ref,
+            output_dir=output_dir,
+            checkpoint_name=checkpoint_name
+        )
+    
+    return results
+
+
+def interactive_translate(translator: Translator):
+    """
+    Interactive translation mode.
+    """
+    print("\n" + "="*50)
+    print("Interactive Translation Mode")
+    print("Type 'quit' to exit")
+    print("="*50 + "\n")
+    
+    while True:
+        try:
+            text = input("English: ").strip()
+            if text.lower() == 'quit':
+                break
+            
+            translation = translator.translate(text)
+            print(f"Vietnamese: {translation}\n")
+        
+        except KeyboardInterrupt:
+            break
+    
+    print("\nGoodbye!")
+
+
+if __name__ == "__main__":
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Evaluate or translate")
+    parser.add_argument("--checkpoint", type=str, required=True, help="Model checkpoint")
+    parser.add_argument("--vocab-src", type=str, required=True, help="Source tokenizer .model path")
+    parser.add_argument("--vocab-tgt", type=str, required=True, help="Target tokenizer .model path")
+    parser.add_argument("--config", type=str, help="Config file path")
+    
+    # Modes
+    parser.add_argument("--interactive", action="store_true", help="Interactive mode")
+    parser.add_argument("--test", action="store_true", help="Evaluate on Test set")
+    parser.add_argument("--val", action="store_true", help="Evaluate on Validation set")
+    parser.add_argument("--gemini", action="store_true", help="Enable Gemini evaluation")
+    
+    parser.add_argument("--device", type=str, default="auto", help="Device")
+    
+    args = parser.parse_args()
+    
+    # Load config and translator
+    config = load_config(args.config) if args.config else load_config()
+    
+    translator = load_translator(
+        args.checkpoint,
+        args.vocab_src,
+        args.vocab_tgt,
+        args.config,
+        args.device
+    )
+    
+    if args.interactive:
+        interactive_translate(translator)
+    
+    elif args.test or args.val:
+        # Determine paths
+        root_dir = config.project_root
+        
+        if args.test:
+            print("Loading TEST set...")
+            if config.data_source == "processed":
+                data_path = root_dir / config.processed_test
+                ds = ProcessedDataset(str(data_path))
+                src_texts = [translator.tokenizer_src.decode(ids) for ids in ds.src_tokens]
+                tgt_texts = [translator.tokenizer_tgt.decode(ids) for ids in ds.tgt_tokens]
             else:
-                pieces = []
-            return ''.join(pieces).replace('▁', ' ').strip()
+                src_path = root_dir / config.test_src
+                tgt_path = root_dir / config.test_tgt
+                src_texts, tgt_texts = LocalTranslationDataset.load_texts(str(src_path), str(tgt_path))
+            
+            output_dir = root_dir / "logs" / "test_results"
+            
+        else: # args.val
+            print("Loading VALIDATION set...")
+            if config.data_source == "processed":
+                data_path = root_dir / config.processed_val
+                ds = ProcessedDataset(str(data_path))
+                src_texts = [translator.tokenizer_src.decode(ids) for ids in ds.src_tokens]
+                tgt_texts = [translator.tokenizer_tgt.decode(ids) for ids in ds.tgt_tokens]
+            else:
+                src_path = root_dir / config.val_src
+                tgt_path = root_dir / config.val_tgt
+                src_texts, tgt_texts = LocalTranslationDataset.load_texts(str(src_path), str(tgt_path))
+                
+            output_dir = root_dir / "logs" / "val_results"
 
-
-def greedy_decode(model: Transformer, src_ids: List[int], sp_en: spm.SentencePieceProcessor, tokenizer_info: Dict[str, Any], device: torch.device, max_len: Optional[int] = None) -> str:
-    """Greedy decode a single source sentence (ids include BOS/EOS expectations).
-
-    Returns the decoded string (without BOS/EOS).
-    """
-    if max_len is None:
-        max_len = tokenizer_info.get('max_length', 128)
-
-    src = torch.tensor(src_ids, dtype=torch.long, device=device).unsqueeze(0)
-    with torch.no_grad():
-        encoder_output, src_mask = model.encode(src)
-
-    bos = tokenizer_info['bos_id']
-    eos = tokenizer_info['eos_id']
-
-    tgt_ids = [bos]
-    for _ in range(max_len):
-        tgt = torch.tensor(tgt_ids, dtype=torch.long, device=device).unsqueeze(0)
-        with torch.no_grad():
-            out = model.decode(tgt, encoder_output, src_mask)
-        logits = out[0, -1, :]
-        next_id = int(torch.argmax(logits).item())
-        tgt_ids.append(next_id)
-        if next_id == eos:
-            break
-
-    # remove BOS and EOS
-    if tgt_ids and tgt_ids[0] == bos:
-        decoded_ids = tgt_ids[1:]
+        # Run evaluation
+        evaluate_model(
+            translator=translator,
+            source_texts=src_texts,
+            reference_texts=tgt_texts,
+            config=config,
+            output_dir=str(output_dir),
+            checkpoint_name=Path(args.checkpoint).stem,
+            run_gemini=args.gemini
+        )
+        
     else:
-        decoded_ids = tgt_ids
-
-    if decoded_ids and decoded_ids[-1] == eos:
-        decoded_ids = decoded_ids[:-1]
-
-    return _decode_with_sentencepiece(sp_en, decoded_ids)
-
-
-def load_test_split(project_root: Optional[Path] = None):
-    if project_root is None:
-        project_root = Path(__file__).resolve().parents[1]
-    splits_path = project_root / 'data' / 'processed' / 'splits.pkl'
-    with open(splits_path, 'rb') as f:
-        splits = pickle.load(f)
-    return splits['test']
-
-
-def evaluate_checkpoint(checkpoint_path: str, project_root: Optional[Path] = None, device: Optional[torch.device] = None, model_kwargs: Optional[Dict[str, Any]] = None, max_examples: Optional[int] = None) -> Dict[str, Any]:
-    """Evaluate a checkpoint on the test split and return BLEU and outputs.
-
-    Returns dict: { 'bleu': float, 'hyps': list, 'refs': list }
-    """
-    if project_root is None:
-        project_root = Path(__file__).resolve().parents[1]
-    if device is None:
-        device = get_device()
-
-    tokenizer_info, sp_vi, sp_en = load_tokenizers_and_config(project_root)
-    model = build_and_load_model(checkpoint_path, tokenizer_info, device=device, model_kwargs=model_kwargs)
-
-    test_data = load_test_split(project_root)
-    hyps = []
-    refs = []
-
-    start = time.time()
-    for i, item in enumerate(test_data):
-        if max_examples is not None and i >= max_examples:
-            break
-
-        src_text = item.get('vi') if 'vi' in item else item.get('src', '')
-        ref_text = item.get('en') if 'en' in item else item.get('tgt', '')
-
-        src_ids = sp_vi.encode_as_ids(src_text)
-        src_ids = [tokenizer_info['bos_id']] + src_ids + [tokenizer_info['eos_id']]
-        if len(src_ids) > tokenizer_info['max_length']:
-            src_ids = src_ids[:tokenizer_info['max_length']-1] + [tokenizer_info['eos_id']]
-
-        hyp = greedy_decode(model, src_ids, sp_en, tokenizer_info, device)
-        hyps.append(hyp)
-        refs.append(ref_text)
-
-        if (i + 1) % 50 == 0:
-            elapsed = time.time() - start
-            print(f"Decoded {i+1}/{len(test_data)} in {elapsed:.1f}s")
-
-    bleu = corpus_bleu(hyps, [refs])
-    return {'bleu': bleu.score, 'hyps': hyps, 'refs': refs}
-
+        print("Please specify --interactive, --test, or --val")

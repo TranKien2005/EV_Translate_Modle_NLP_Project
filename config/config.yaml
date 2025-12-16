@@ -1,0 +1,121 @@
+# =============================================================================
+# Transformer English-Vietnamese Translation Model Configuration
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Data Configuration
+# -----------------------------------------------------------------------------
+data:
+  # Data source: "local", "huggingface", or "processed"
+  # - "local": Load from raw text files, tokenize on-the-fly
+  # - "processed": Load pre-tokenized data from .pt files (fastest)
+  # Run: python scripts/preprocess_data.py to create processed data
+  source: "local"
+  
+  # Hugging Face settings (for download script)
+  dataset_name: "vinai/PhoMT"
+  # NOTE: hf_token should be set in .env file, not here!
+  
+  # Local file paths (PhoMT raw data)
+  train_src: "data/PhoMT/detokenization/train/train.en"
+  train_tgt: "data/PhoMT/detokenization/train/train.vi"
+  val_src: "data/PhoMT/detokenization/dev/dev.en"
+  val_tgt: "data/PhoMT/detokenization/dev/dev.vi"
+  test_src: "data/PhoMT/detokenization/test/test.en"
+  test_tgt: "data/PhoMT/detokenization/test/test.vi"
+  
+  # Processed data paths (after running preprocess_data.py)
+  processed_train: "data/processed/train.pt"
+  processed_val: "data/processed/val.pt"
+  processed_test: "data/processed/test.pt"
+  
+  # Evaluation limits (to save time/cost)
+  eval_max_samples_bleu: 1000  # For BLEU score
+  eval_max_samples_gemini: 200 # For Gemini score
+  
+  # Preprocessing
+  max_seq_len: 128
+  min_seq_len: 1
+  max_samples: null  # null = all samples, set number to limit
+  
+  # Vocabulary (reduced for faster training)
+  src_vocab_size: 12000
+  tgt_vocab_size: 12000
+
+# -----------------------------------------------------------------------------
+# Model Configuration (Smaller for NLP project)
+# -----------------------------------------------------------------------------
+model:
+  d_model: 256           # Embedding dimension (reduced from 512)
+  num_heads: 8           # Number of attention heads (256/8=32 per head)
+  num_encoder_layers: 5  # Number of encoder layers (reduced from 6)
+  num_decoder_layers: 5  # Number of decoder layers (reduced from 6)
+  d_ff: 1024             # Feed-forward dimension (4x d_model)
+  dropout: 0.2           # Dropout rate (increased for regularization)
+  max_seq_len: 128       # Maximum sequence length
+
+# -----------------------------------------------------------------------------
+# Training Configuration
+# -----------------------------------------------------------------------------
+training:
+  batch_size: 32         # Actual batch size per step
+  gradient_accumulation_steps: 2  # Effective batch = 32 * 2 = 64
+  epochs: 15             # Reduced for Kaggle time limit
+  learning_rate: 0.0001
+  warmup_steps: 6000     # Increased for stable training
+  label_smoothing: 0.15  # Increased for better generalization
+  gradient_clip: 1.0
+  
+  # Optimizer
+  optimizer: "adam"
+  betas: [0.9, 0.98]
+  eps: 1.0e-9
+  
+  # Checkpointing
+  save_every: 1           # Save every N epochs
+  eval_every: 1           # Evaluate every N epochs
+  
+  # Early stopping
+  early_stopping_patience: 5
+
+# -----------------------------------------------------------------------------
+# Paths (will be overridden based on environment)
+# -----------------------------------------------------------------------------
+paths:
+  data_dir: "data/"
+  checkpoint_dir: "checkpoints/"
+  log_dir: "logs/"
+
+# -----------------------------------------------------------------------------
+# Output Files - Tên các file được sinh ra khi training
+# -----------------------------------------------------------------------------
+output_files:
+  # Tokenizer models (SentencePiece)
+  tokenizer_src: "tokenizer_src.model"      # Source language tokenizer
+  tokenizer_tgt: "tokenizer_tgt.model"      # Target language tokenizer
+  vocab_src: "tokenizer_src.vocab"          # Source vocabulary file
+  vocab_tgt: "tokenizer_tgt.vocab"          # Target vocabulary file
+  
+  # Model checkpoints
+  best_model: "best_model.pt"               # Best model checkpoint
+  last_model: "last_model.pt"               # Last epoch checkpoint
+  checkpoint_pattern: "checkpoint_epoch_{epoch}.pt"  # Per-epoch checkpoints
+  
+  # Processed data (optional cache)
+  processed_train: "processed_train.pt"     # Preprocessed training data
+  processed_val: "processed_val.pt"         # Preprocessed validation data
+
+# -----------------------------------------------------------------------------
+# Logging
+# -----------------------------------------------------------------------------
+logging:
+  use_tensorboard: true
+  log_every: 100          # Log every N steps
+
+# -----------------------------------------------------------------------------
+# Hardware
+# -----------------------------------------------------------------------------
+hardware:
+  device: "auto"          # auto, cuda, cpu
+  num_workers: 4
+  pin_memory: true
