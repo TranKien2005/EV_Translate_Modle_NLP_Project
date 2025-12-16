@@ -40,12 +40,17 @@ def collate_fn(
         src_padded = pad_sequence(src_seqs, batch_first=True, padding_value=src_pad_idx)
         tgt_padded = pad_sequence(tgt_seqs, batch_first=True, padding_value=tgt_pad_idx)
         
-        return {
+        result = {
             'src': src_padded,
             'tgt': tgt_padded,
-            'src_texts': [item['src_text'] for item in batch],
-            'tgt_texts': [item['tgt_text'] for item in batch],
         }
+        
+        # Add texts if available (not available for ProcessedDataset)
+        if 'src_text' in batch[0]:
+            result['src_texts'] = [item['src_text'] for item in batch]
+            result['tgt_texts'] = [item['tgt_text'] for item in batch]
+        
+        return result
     else:
         # Return texts only (tokenization will be done later)
         return {
