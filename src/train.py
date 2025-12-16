@@ -165,8 +165,17 @@ class Trainer:
             # Load pre-processed data (fastest)
             self.logger.log("Loading pre-processed data...")
             
-            train_path = self.config.project_root / self.config.processed_train
-            val_path = self.config.project_root / self.config.processed_val
+            # Helper to convert config path to actual path
+            def get_data_path(config_path: str):
+                """Convert config path (data/...) to actual path using data_dir."""
+                if config_path.startswith('data/'):
+                    relative_path = config_path[5:]  # Remove 'data/'
+                else:
+                    relative_path = config_path
+                return self.config.paths.data_dir / relative_path
+            
+            train_path = get_data_path(self.config.processed_train)
+            val_path = get_data_path(self.config.processed_val)
             
             train_dataset = ProcessedDataset(str(train_path))
             val_dataset = ProcessedDataset(str(val_path))
@@ -177,11 +186,20 @@ class Trainer:
         elif self.config.data_source == "local":
             self.logger.log("Loading from local files...")
             
-            # Get paths (relative to project root)
-            train_src = self.config.project_root / self.config.train_src
-            train_tgt = self.config.project_root / self.config.train_tgt
-            val_src = self.config.project_root / self.config.val_src
-            val_tgt = self.config.project_root / self.config.val_tgt
+            # Helper to convert config path to actual path
+            def get_data_path(config_path: str):
+                """Convert config path (data/...) to actual path using data_dir."""
+                if config_path.startswith('data/'):
+                    relative_path = config_path[5:]  # Remove 'data/'
+                else:
+                    relative_path = config_path
+                return self.config.paths.data_dir / relative_path
+            
+            # Get paths using data_dir
+            train_src = get_data_path(self.config.train_src)
+            train_tgt = get_data_path(self.config.train_tgt)
+            val_src = get_data_path(self.config.val_src)
+            val_tgt = get_data_path(self.config.val_tgt)
             
             # Load datasets
             train_dataset = LocalTranslationDataset(
