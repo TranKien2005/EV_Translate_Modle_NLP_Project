@@ -30,9 +30,10 @@ class ProcessedDataset(Dataset):
         print(f"Loading processed data from: {data_path}")
         data = torch.load(data_path)
         
-        # Store as lists (will convert to tensor in __getitem__)
-        self.src_tokens = data['src']
-        self.tgt_tokens = data['tgt']
+        # Pre-convert to list of tensors (MUCH faster than converting in __getitem__)
+        print("  Converting to tensors...")
+        self.src_tokens = [torch.tensor(s, dtype=torch.long) for s in data['src']]
+        self.tgt_tokens = [torch.tensor(t, dtype=torch.long) for t in data['tgt']]
         self.num_samples = data['num_samples']
         
         print(f"✓ Loaded {self.num_samples:,} samples")
@@ -41,10 +42,10 @@ class ProcessedDataset(Dataset):
         return self.num_samples
     
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
-        """Get a single sample as tensors (faster for DataLoader)."""
+        """Get a single sample (already tensors)."""
         return {
-            'src_tokens': torch.tensor(self.src_tokens[idx], dtype=torch.long),
-            'tgt_tokens': torch.tensor(self.tgt_tokens[idx], dtype=torch.long),
+            'src_tokens': self.src_tokens[idx],
+            'tgt_tokens': self.tgt_tokens[idx],
         }
 
 
