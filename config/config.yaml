@@ -51,7 +51,7 @@ model:
   num_encoder_layers: 5  # Number of encoder layers (reduced from 6)
   num_decoder_layers: 5  # Number of decoder layers (reduced from 6)
   d_ff: 1024             # Feed-forward dimension (4x d_model)
-  dropout: 0.2           # Dropout rate (increased for regularization)
+  dropout: 0.1           # Dropout rate (reduced for faster convergence)
   max_seq_len: 128       # Maximum sequence length
 
 # -----------------------------------------------------------------------------
@@ -61,9 +61,9 @@ training:
   batch_size: 64         # Increased for faster training
   gradient_accumulation_steps: 1  # Effective batch = 64
   epochs: 10             # Reduced for Kaggle time limit
-  learning_rate: 0.0001
-  warmup_steps: 6000     # Increased for stable training
-  label_smoothing: 0.15  # Increased for better generalization
+  learning_rate: 0.0005  # Increased for faster convergence
+  warmup_steps: 4000     # Reduced for faster learning
+  label_smoothing: 0.1   # Reduced for faster convergence
   gradient_clip: 1.0
   
   # Optimizer
