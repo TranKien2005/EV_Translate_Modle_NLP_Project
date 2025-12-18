@@ -163,14 +163,16 @@ def preprocess_split(
 
 def main():
     parser = argparse.ArgumentParser(description="Preprocess translation data")
+    parser.add_argument("--config", type=str, default=None,
+                        help="Path to config file (default: config/config.yaml)")
     parser.add_argument("--max-samples", type=int, default=None,
                         help="Max samples to process (None = all)")
     parser.add_argument("--force-retrain", action="store_true",
                         help="Force retrain tokenizers even if they exist")
     args = parser.parse_args()
     
-    # Load config
-    config = load_config()
+    # Load config (custom or default)
+    config = load_config(args.config)
     
     print("="*60)
     print("Data Preprocessing Script")

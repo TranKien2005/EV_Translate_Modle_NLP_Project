@@ -1,0 +1,118 @@
+# =============================================================================
+# Transformer Vietnamese-English Translation Model Configuration
+# REVERSED: VI -> EN (source: Vietnamese, target: English)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Data Configuration
+# -----------------------------------------------------------------------------
+data:
+  # Data source: "local", "huggingface", or "processed"
+  source: "local"
+  
+  # Dataset info
+  dataset_name: "vinai/PhoMT"
+  
+  # Local file paths (REVERSED: VI -> EN)
+  # NOTE: src = Vietnamese, tgt = English
+  train_src: "data/PhoMT/detokenization/train/train.vi"
+  train_tgt: "data/PhoMT/detokenization/train/train.en"
+  val_src: "data/PhoMT/detokenization/dev/dev.vi"
+  val_tgt: "data/PhoMT/detokenization/dev/dev.en"
+  test_src: "data/PhoMT/detokenization/test/test.vi"
+  test_tgt: "data/PhoMT/detokenization/test/test.en"
+  
+  # Processed data paths
+  processed_train: "data/processed_vi_en/train.pt"
+  processed_val: "data/processed_vi_en/val.pt"
+  processed_test: "data/processed_vi_en/test.pt"
+  
+  # Evaluation limits
+  eval_max_samples_bleu: 1000
+  eval_max_samples_gemini: 200
+  
+  # Preprocessing
+  max_seq_len: 128
+  min_seq_len: 1
+  max_samples: null
+  
+  # Vocabulary
+  src_vocab_size: 16000  # Vietnamese vocab
+  tgt_vocab_size: 16000  # English vocab
+
+# -----------------------------------------------------------------------------
+# Model Configuration (Same as EN->VI)
+# -----------------------------------------------------------------------------
+model:
+  d_model: 256
+  num_heads: 8
+  num_encoder_layers: 6  # More encoder for Vietnamese (complex source)
+  num_decoder_layers: 5  # Less decoder for English (simpler target)
+  d_ff: 1024
+  dropout: 0.15
+  max_seq_len: 128
+
+# -----------------------------------------------------------------------------
+# Training Configuration
+# -----------------------------------------------------------------------------
+training:
+  batch_size: 64
+  gradient_accumulation_steps: 1
+  epochs: 15
+  learning_rate: 0.0008
+  warmup_steps: 1500
+  label_smoothing: 0.1
+  gradient_clip: 1.0
+  
+  # Optimizer
+  optimizer: "adamw"
+  betas: [0.9, 0.98]
+  eps: 1.0e-9
+  weight_decay: 0.05
+  
+  # Scheduler
+  min_lr: 1.0e-6
+  
+  # Checkpointing
+  save_every: 1
+  eval_every: 1
+  
+  # Early stopping
+  early_stopping_patience: 5
+
+# -----------------------------------------------------------------------------
+# Paths (Separate from EN->VI model)
+# -----------------------------------------------------------------------------
+paths:
+  data_dir: "data/"
+  checkpoint_dir: "checkpoints_vi_en/"  # Different folder!
+  log_dir: "logs_vi_en/"
+
+# -----------------------------------------------------------------------------
+# Output Files
+# -----------------------------------------------------------------------------
+output_files:
+  tokenizer_src: "tokenizer_vi.model"   # Vietnamese tokenizer
+  tokenizer_tgt: "tokenizer_en.model"   # English tokenizer
+  vocab_src: "tokenizer_vi.vocab"
+  vocab_tgt: "tokenizer_en.vocab"
+  best_model: "best_model.pt"
+  last_model: "last_model.pt"
+  checkpoint_pattern: "checkpoint_epoch_{epoch}.pt"
+  processed_train: "processed_train.pt"
+  processed_val: "processed_val.pt"
+
+# -----------------------------------------------------------------------------
+# Logging
+# -----------------------------------------------------------------------------
+logging:
+  use_tensorboard: true
+  log_every: 100
+
+# -----------------------------------------------------------------------------
+# Hardware
+# -----------------------------------------------------------------------------
+hardware:
+  device: "auto"
+  num_workers: 4
+  pin_memory: true
