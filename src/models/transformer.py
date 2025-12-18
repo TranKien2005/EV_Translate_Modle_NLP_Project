@@ -36,7 +36,8 @@ class Transformer(nn.Module):
         dropout: float = 0.1,
         src_padding_idx: int = 0,
         tgt_padding_idx: int = 0,
-        share_embeddings: bool = False
+        share_embeddings: bool = False,
+        weight_tying: bool = True  # New: tie decoder embedding with output projection
     ):
         """
         Args:
@@ -52,12 +53,14 @@ class Transformer(nn.Module):
             src_padding_idx: Source padding token index
             tgt_padding_idx: Target padding token index
             share_embeddings: Whether to share embeddings between encoder and decoder
+            weight_tying: Whether to tie decoder embedding with output projection
         """
         super().__init__()
         
         self.src_padding_idx = src_padding_idx
         self.tgt_padding_idx = tgt_padding_idx
         self.d_model = d_model
+        self.weight_tying = weight_tying
         
         # Encoder
         self.encoder = TransformerEncoder(
@@ -83,20 +86,28 @@ class Transformer(nn.Module):
             padding_idx=tgt_padding_idx
         )
         
-        # Output projection
-        self.output_projection = nn.Linear(d_model, tgt_vocab_size)
+        # Output projection (no bias for weight tying)
+        self.output_projection = nn.Linear(d_model, tgt_vocab_size, bias=not weight_tying)
         
         # Share embeddings if specified
         if share_embeddings:
             self.decoder.embedding.weight = self.encoder.embedding.weight
         
-        # Initialize output projection
-        self._init_weights()
+        # Weight Tying: share decoder embedding with output projection
+        # This reduces parameters and improves training
+        # Paper: "Using the Output Embedding to Improve Language Models" (Press & Wolf, 2017)
+        if weight_tying:
+            self.output_projection.weight = self.decoder.embedding.weight
+        
+        # Initialize output projection (only if not using weight tying)
+        if not weight_tying:
+            self._init_weights()
     
     def _init_weights(self):
         """Initialize output projection weights."""
         nn.init.xavier_uniform_(self.output_projection.weight)
-        nn.init.zeros_(self.output_projection.bias)
+        if self.output_projection.bias is not None:
+            nn.init.zeros_(self.output_projection.bias)
     
     def create_src_mask(self, src: torch.Tensor) -> torch.Tensor:
         """

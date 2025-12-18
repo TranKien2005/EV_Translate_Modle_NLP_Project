@@ -4,12 +4,13 @@ Training script for Transformer translation model.
 
 import torch
 import torch.nn as nn
-from torch.optim import Adam
-from torch.optim.lr_scheduler import LambdaLR
+from torch.optim import AdamW
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 from torch.cuda.amp import autocast, GradScaler
 from typing import Optional, Dict, Any
 from pathlib import Path
 from tqdm import tqdm
+import math
 
 from src.config import Config, load_config
 from src.models import Transformer
@@ -134,22 +135,47 @@ class Trainer:
         self.logger.log(f"Model parameters: {self.model.count_parameters():,}")
     
     def setup_optimizer(self):
-        """Initialize optimizer and scheduler."""
-        self.optimizer = Adam(
+        """Initialize optimizer and scheduler with AdamW + Cosine Annealing."""
+        # AdamW: Adam with decoupled weight decay (better regularization)
+        self.optimizer = AdamW(
             self.model.parameters(),
             lr=self.config.learning_rate,
             betas=(0.9, 0.98),
-            eps=1e-9
+            eps=1e-9,
+            weight_decay=self.config.weight_decay
         )
         
-        # Warmup scheduler
-        def lr_lambda(step):
-            warmup = self.config.warmup_steps
-            if step == 0:
-                return 1e-8
-            return min(step ** (-0.5), step * warmup ** (-1.5))
+        # Calculate total training steps
+        steps_per_epoch = len(self.train_loader)
+        total_steps = steps_per_epoch * self.config.epochs
+        warmup_steps = self.config.warmup_steps
+        min_lr = self.config.min_lr
         
-        self.scheduler = LambdaLR(self.optimizer, lr_lambda)
+        self.logger.log(f"Optimizer: AdamW (weight_decay={self.config.weight_decay})")
+        self.logger.log(f"Scheduler: Cosine Annealing with {warmup_steps} warmup steps")
+        self.logger.log(f"Total steps: {total_steps}, min_lr: {min_lr}")
+        
+        # Linear warmup scheduler
+        warmup_scheduler = LinearLR(
+            self.optimizer,
+            start_factor=1e-8,
+            end_factor=1.0,
+            total_iters=warmup_steps
+        )
+        
+        # Cosine annealing scheduler (after warmup)
+        cosine_scheduler = CosineAnnealingLR(
+            self.optimizer,
+            T_max=total_steps - warmup_steps,
+            eta_min=min_lr
+        )
+        
+        # Combine: warmup first, then cosine annealing
+        self.scheduler = SequentialLR(
+            self.optimizer,
+            schedulers=[warmup_scheduler, cosine_scheduler],
+            milestones=[warmup_steps]
+        )
     
     def setup_criterion(self):
         """Initialize loss function."""

@@ -38,38 +38,42 @@ data:
   min_seq_len: 1
   max_samples: null  # null = all samples, set number to limit
   
-  # Vocabulary (reduced for faster training)
-  src_vocab_size: 12000
-  tgt_vocab_size: 12000
+  # Vocabulary (increased for better coverage)
+  src_vocab_size: 16000
+  tgt_vocab_size: 16000
 
 # -----------------------------------------------------------------------------
-# Model Configuration (Smaller for NLP project)
+# Model Configuration (Optimized for speed + quality)
 # -----------------------------------------------------------------------------
 model:
-  d_model: 256           # Embedding dimension (reduced from 512)
+  d_model: 256           # Smaller for faster training
   num_heads: 8           # Number of attention heads (256/8=32 per head)
-  num_encoder_layers: 5  # Number of encoder layers (reduced from 6)
-  num_decoder_layers: 5  # Number of decoder layers (reduced from 6)
+  num_encoder_layers: 5  # Number of encoder layers
+  num_decoder_layers: 6  # More decoder layers for Vietnamese (target language)
   d_ff: 1024             # Feed-forward dimension (4x d_model)
-  dropout: 0.1           # Dropout rate (reduced for faster convergence)
+  dropout: 0.15          # Slightly higher for better regularization
   max_seq_len: 128       # Maximum sequence length
 
 # -----------------------------------------------------------------------------
-# Training Configuration
+# Training Configuration (Optimized for 3M samples + limited GPU)
 # -----------------------------------------------------------------------------
 training:
-  batch_size: 64         # Increased for faster training
+  batch_size: 64         # Good for most GPUs
   gradient_accumulation_steps: 1  # Effective batch = 64
-  epochs: 10             # Reduced for Kaggle time limit
-  learning_rate: 0.0005  # Increased for faster convergence
-  warmup_steps: 4000     # Reduced for faster learning
-  label_smoothing: 0.1   # Reduced for faster convergence
+  epochs: 15             # More epochs for smaller model
+  learning_rate: 0.0008  # Slightly lower for stability
+  warmup_steps: 1500     # Shorter warmup (faster start)
+  label_smoothing: 0.1   # Standard value
   gradient_clip: 1.0
   
-  # Optimizer
-  optimizer: "adam"
+  # Optimizer (AdamW with weight decay)
+  optimizer: "adamw"
   betas: [0.9, 0.98]
   eps: 1.0e-9
+  weight_decay: 0.05     # Higher for better regularization
+  
+  # Scheduler: Cosine Annealing with Linear Warmup
+  min_lr: 1.0e-6         # Minimum LR at end of training
   
   # Checkpointing
   save_every: 1           # Save every N epochs

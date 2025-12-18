@@ -168,6 +168,8 @@ class Config:
         self.warmup_steps = training.get('warmup_steps', 4000)
         self.label_smoothing = training.get('label_smoothing', 0.1)
         self.gradient_clip = training.get('gradient_clip', 1.0)
+        self.weight_decay = training.get('weight_decay', 0.01)  # AdamW weight decay
+        self.min_lr = training.get('min_lr', 1e-6)  # Minimum LR for cosine scheduler
         
         # Output files config
         output_files = self._config.get('output_files', {})
