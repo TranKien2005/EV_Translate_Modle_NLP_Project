@@ -224,6 +224,10 @@ def main():
             max_samples=args.max_samples or config.max_samples
         )
         
+        # Get tokenizer prefix names from config (without .model extension)
+        src_prefix = config.tokenizer_src_file.replace('.model', '')
+        tgt_prefix = config.tokenizer_tgt_file.replace('.model', '')
+        
         # Train tokenizers
         tokenizer_src, tokenizer_tgt = train_tokenizers(
             src_texts=src_texts,
@@ -231,13 +235,18 @@ def main():
             output_dir=str(tokenizer_dir),
             src_vocab_size=config.src_vocab_size,
             tgt_vocab_size=config.tgt_vocab_size,
-            model_type="bpe"
+            model_type="bpe",
+            src_model_prefix=src_prefix,
+            tgt_model_prefix=tgt_prefix
         )
     
-    # Output paths for processed data
-    processed_dir = config.paths.data_dir / "processed"
-    train_output = processed_dir / "train.pt"
-    val_output = processed_dir / "val.pt"
+    # Output paths for processed data - read from config!
+    # This supports different paths for EN-VI vs VI-EN
+    train_output = get_data_path(config.processed_train)
+    val_output = get_data_path(config.processed_val)
+    
+    # Create output directory
+    train_output.parent.mkdir(parents=True, exist_ok=True)
     
     # Process training data
     train_count = preprocess_split(
@@ -266,7 +275,7 @@ def main():
     # Process test data (if exists)
     test_src = get_data_path(config.test_src)
     test_tgt = get_data_path(config.test_tgt)
-    test_output = config.paths.data_dir / "processed" / "test.pt"
+    test_output = get_data_path(config.processed_test)
     
     if test_src.exists() and test_tgt.exists():
         test_count = preprocess_split(
@@ -292,7 +301,7 @@ def main():
     print(f"Val samples:   {val_count:,}")
     if test_count > 0:
         print(f"Test samples:  {test_count:,}")
-    print(f"\nProcessed data saved to: {processed_dir}")
+    print(f"\nProcessed data saved to: {train_output.parent}")
     print(f"Tokenizers saved to: {tokenizer_dir}")
 
 

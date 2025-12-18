@@ -99,6 +99,10 @@ class Trainer:
         """Setup SentencePiece tokenizers from training data."""
         self.logger.log("Training SentencePiece tokenizers...")
         
+        # Get tokenizer prefix names from config (without .model extension)
+        src_prefix = self.config.tokenizer_src_file.replace('.model', '')
+        tgt_prefix = self.config.tokenizer_tgt_file.replace('.model', '')
+        
         # Train SentencePiece tokenizers
         tokenizer_dir = self.config.paths.checkpoint_dir / "tokenizers"
         self.tokenizer_src, self.tokenizer_tgt = train_tokenizers(
@@ -107,7 +111,9 @@ class Trainer:
             output_dir=str(tokenizer_dir),
             src_vocab_size=self.config.src_vocab_size,
             tgt_vocab_size=self.config.tgt_vocab_size,
-            model_type="bpe"
+            model_type="bpe",
+            src_model_prefix=src_prefix,
+            tgt_model_prefix=tgt_prefix
         )
         
         self.logger.log(f"Source vocab size: {self.tokenizer_src.vocab_size}")

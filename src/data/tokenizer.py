@@ -236,7 +236,9 @@ def train_tokenizers(
     output_dir: str,
     src_vocab_size: int = 32000,
     tgt_vocab_size: int = 32000,
-    model_type: str = "bpe"
+    model_type: str = "bpe",
+    src_model_prefix: str = "tokenizer_src",
+    tgt_model_prefix: str = "tokenizer_tgt"
 ) -> tuple:
     """
     Train source and target tokenizers.
@@ -248,6 +250,8 @@ def train_tokenizers(
         src_vocab_size: Source vocabulary size
         tgt_vocab_size: Target vocabulary size
         model_type: SentencePiece model type
+        src_model_prefix: Prefix for source tokenizer (default: tokenizer_src)
+        tgt_model_prefix: Prefix for target tokenizer (default: tokenizer_tgt)
     
     Returns:
         Tuple of (src_tokenizer, tgt_tokenizer)
@@ -261,23 +265,23 @@ def train_tokenizers(
     tgt_file = prepare_training_data(tgt_texts, output_dir / "tgt_train.txt")
     
     # Train source tokenizer
-    print("\nTraining source (EN) tokenizer...")
+    print(f"\nTraining source tokenizer ({src_model_prefix})...")
     src_tokenizer = SentencePieceTokenizer.train(
         input_file=src_file,
-        model_prefix=str(output_dir / "tokenizer_src"),
+        model_prefix=str(output_dir / src_model_prefix),
         vocab_size=src_vocab_size,
         model_type=model_type,
-        character_coverage=1.0  # English
+        character_coverage=1.0  # Default for English
     )
     
     # Train target tokenizer
-    print("\nTraining target (VI) tokenizer...")
+    print(f"\nTraining target tokenizer ({tgt_model_prefix})...")
     tgt_tokenizer = SentencePieceTokenizer.train(
         input_file=tgt_file,
-        model_prefix=str(output_dir / "tokenizer_tgt"),
+        model_prefix=str(output_dir / tgt_model_prefix),
         vocab_size=tgt_vocab_size,
         model_type=model_type,
-        character_coverage=0.9995  # Vietnamese (more characters)
+        character_coverage=0.9995  # More characters for non-English
     )
     
     print("\n✓ Tokenizers trained successfully!")
