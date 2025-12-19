@@ -426,7 +426,17 @@ class Trainer:
                 self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
                 self.logger.log(f"✓ Loaded scheduler state from checkpoint")
             else:
-                self.logger.log("⚠️ No scheduler state in checkpoint - LR may be incorrect!")
+                # Fast-forward scheduler to current step
+                steps_per_epoch = len(self.train_loader)
+                current_step = self.current_epoch * steps_per_epoch
+                self.logger.log(f"⚠️ No scheduler state - fast-forwarding to step {current_step}")
+                
+                # Step scheduler to catch up
+                for _ in range(current_step):
+                    self.scheduler.step()
+                
+                current_lr = self.scheduler.get_last_lr()[0]
+                self.logger.log(f"✓ Scheduler synced. Current LR: {current_lr:.2e}")
         
         self.logger.log(f"Starting training from epoch {self.current_epoch}")
         
