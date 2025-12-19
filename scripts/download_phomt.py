@@ -193,6 +193,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Force re-download even if data exists"
     )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Path to config file (default: config/config.yaml)"
+    )
     
     args = parser.parse_args()
     
@@ -200,7 +206,7 @@ if __name__ == "__main__":
     try:
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from src.config import load_config
-        config = load_config()
+        config = load_config(args.config)
         
         # Use token from config if not provided
         if args.token is None:
