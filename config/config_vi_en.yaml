@@ -2,6 +2,29 @@
 # Transformer Vietnamese-English Translation Model Configuration
 # REVERSED: VI -> EN (source: Vietnamese, target: English)
 # =============================================================================
+#
+# CONFIGURABLE (can change here):
+#   - Paths: data_dir, checkpoint_dir, log_dir
+#   - Model: d_model, num_heads, num_layers, d_ff, dropout
+#   - Training: batch_size, learning_rate, epochs, warmup_steps, etc.
+#   - Data: paths, vocab_size, max_seq_len
+#
+# HARDCODED (need to modify src/train.py):
+#   - Optimizer: AdamW (line ~146)
+#   - Scheduler: CosineAnnealingWarmRestarts (line ~180)
+#   - Loss: CrossEntropyLoss with label smoothing
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Paths Configuration
+# All paths are relative to project root OR absolute paths
+# For Kaggle/Colab, change to: /kaggle/working/... or /content/...
+# -----------------------------------------------------------------------------
+paths:
+  data_dir: "data"                           # Data directory
+  checkpoint_dir: "checkpoints_vi_en"        # Model checkpoints
+  log_dir: "logs_vi_en"                      # Training logs
 
 # -----------------------------------------------------------------------------
 # Data Configuration
@@ -15,17 +38,18 @@ data:
   
   # Local file paths (REVERSED: VI -> EN)
   # NOTE: src = Vietnamese, tgt = English
-  train_src: "data/PhoMT/detokenization/train/train.vi"
-  train_tgt: "data/PhoMT/detokenization/train/train.en"
-  val_src: "data/PhoMT/detokenization/dev/dev.vi"
-  val_tgt: "data/PhoMT/detokenization/dev/dev.en"
-  test_src: "data/PhoMT/detokenization/test/test.vi"
-  test_tgt: "data/PhoMT/detokenization/test/test.en"
+  # Paths are relative to data_dir
+  train_src: "PhoMT/detokenization/train/train.vi"
+  train_tgt: "PhoMT/detokenization/train/train.en"
+  val_src: "PhoMT/detokenization/dev/dev.vi"
+  val_tgt: "PhoMT/detokenization/dev/dev.en"
+  test_src: "PhoMT/detokenization/test/test.vi"
+  test_tgt: "PhoMT/detokenization/test/test.en"
   
-  # Processed data paths
-  processed_train: "data/processed_vi_en/train.pt"
-  processed_val: "data/processed_vi_en/val.pt"
-  processed_test: "data/processed_vi_en/test.pt"
+  # Processed data paths (relative to data_dir)
+  processed_train: "processed_vi_en/train.pt"
+  processed_val: "processed_vi_en/val.pt"
+  processed_test: "processed_vi_en/test.pt"
   
   # Evaluation limits
   eval_max_samples_bleu: 1000
@@ -56,7 +80,7 @@ model:
 # Training Configuration (Optimized for d_model=512)
 # -----------------------------------------------------------------------------
 training:
-  batch_size: 32         # Smaller batch for larger model (VRAM)
+  batch_size: 64         # Smaller batch for larger model (VRAM)
   gradient_accumulation_steps: 2  # Effective batch = 64
   epochs: 15             # More epochs since no time pressure
   learning_rate: 0.0005  # Lower LR for larger model (more stable)

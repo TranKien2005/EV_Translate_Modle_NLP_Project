@@ -5,7 +5,7 @@ Training script for Transformer translation model.
 import torch
 import torch.nn as nn
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, LinearLR, SequentialLR
 from torch.cuda.amp import autocast, GradScaler
 from typing import Optional, Dict, Any
 from pathlib import Path
@@ -154,13 +154,20 @@ class Trainer:
         min_lr = self.config.min_lr
         self.logger.log(f"Optimizer: AdamW (weight_decay={self.config.weight_decay})")
         
-        # Cosine Annealing with warmup
+        # Cosine Annealing with Warm Restarts
         steps_per_epoch = len(self.train_loader)
-        total_steps = steps_per_epoch * self.config.epochs
         warmup_steps = self.config.warmup_steps
         
-        self.logger.log(f"Scheduler: Cosine Annealing with {warmup_steps} warmup steps")
-        self.logger.log(f"Total steps: {total_steps}, min_lr: {min_lr}")
+        # T_0: steps per restart cycle (3 epochs)
+        # T_mult: each cycle is T_mult times longer than previous
+        restart_epochs = getattr(self.config, 'restart_epochs', 3)
+        t_mult = getattr(self.config, 't_mult', 2)
+        T_0 = steps_per_epoch * restart_epochs
+        
+        self.logger.log(f"Scheduler: Cosine Annealing Warm Restarts")
+        self.logger.log(f"  Warmup: {warmup_steps} steps")
+        self.logger.log(f"  Restart every: {restart_epochs} epochs (T_mult={t_mult})")
+        self.logger.log(f"  Min LR: {min_lr}")
         
         # Linear warmup scheduler
         warmup_scheduler = LinearLR(
@@ -170,17 +177,18 @@ class Trainer:
             total_iters=warmup_steps
         )
         
-        # Cosine annealing scheduler (after warmup)
-        cosine_scheduler = CosineAnnealingLR(
+        # Cosine annealing with warm restarts (after warmup)
+        cosine_restart_scheduler = CosineAnnealingWarmRestarts(
             self.optimizer,
-            T_max=total_steps - warmup_steps,
+            T_0=T_0,
+            T_mult=t_mult,
             eta_min=min_lr
         )
         
-        # Combine: warmup first, then cosine annealing
+        # Combine: warmup first, then cosine with restarts
         self.scheduler = SequentialLR(
             self.optimizer,
-            schedulers=[warmup_scheduler, cosine_scheduler],
+            schedulers=[warmup_scheduler, cosine_restart_scheduler],
             milestones=[warmup_steps]
         )
     
@@ -204,12 +212,8 @@ class Trainer:
             self.logger.log("Loading pre-processed data...")
             
             # Helper to convert config path to actual path
-            def get_data_path(config_path: str):
-                """Convert config path (data/...) to actual path using data_dir."""
-                if config_path.startswith('data/'):
-                    relative_path = config_path[5:]  # Remove 'data/'
-                else:
-                    relative_path = config_path
+            def get_data_path(relative_path: str):
+                """Join data_dir with relative path from config."""
                 return self.config.paths.data_dir / relative_path
             
             train_path = get_data_path(self.config.processed_train)
@@ -225,12 +229,8 @@ class Trainer:
             self.logger.log("Loading from local files...")
             
             # Helper to convert config path to actual path
-            def get_data_path(config_path: str):
-                """Convert config path (data/...) to actual path using data_dir."""
-                if config_path.startswith('data/'):
-                    relative_path = config_path[5:]  # Remove 'data/'
-                else:
-                    relative_path = config_path
+            def get_data_path(relative_path: str):
+                """Join data_dir with relative path from config."""
                 return self.config.paths.data_dir / relative_path
             
             # Get paths using data_dir

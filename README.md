@@ -1,152 +1,180 @@
-# Translate Transformer NLP Project
+# 🌐 Vietnamese-English Translation Model
 
-Dự án xây dựng mô hình dịch máy Seq2Seq với kiến trúc Transformer từ đầu (from scratch) cho bài tập lớn.
+Transformer-based Neural Machine Translation for Vietnamese ↔ English.
 
-## Cấu trúc Project
+## ✨ Features
 
-```
-Translate_Transformer_NLP_Project/
-├── data/                          # Dữ liệu
-│   ├── raw/                       # Data gốc (cache từ Hugging Face)
-│   └── processed/                 # Vocab, tokenized data
-├── checkpoints/                   # Model checkpoints
-├── logs/                          # Training logs, tensorboard
-├── results/                       # Evaluation results, plots
-├── src/                           # Source code modules
-│   ├── attention.py               # Attention mechanisms
-│   ├── layers.py                  # Encoder/Decoder layers
-│   ├── model.py                   # Full Transformer model
-│   └── utils.py                   # Helper functions
-├── notebooks/                     # Jupyter notebooks
-│   ├── 01_data_exploration.ipynb  # Phân tích & EDA
-│   ├── 02_preprocessing.ipynb     # Tiền xử lý data
-│   ├── 03_model_building.ipynb    # Build & test model
-│   ├── 04_training.ipynb          # Training loop
-│   └── 05_evaluation.ipynb        # Evaluation & visualization
-└── requirements.txt               # Dependencies
+- **VI → EN**: Vietnamese to English translation
+- **EN → VI**: English to Vietnamese translation
+- **Transformer architecture**: 6 encoder + 5 decoder layers
+- **SentencePiece BPE tokenizer**: 16k vocabulary
+
+## 🚀 Quick Start
+
+### Installation
+
+```bash
+git clone https://github.com/TranKien2005/EV_Translate_Modle_NLP_Project.git
+cd EV_Translate_Modle_NLP_Project
+pip install torch sentencepiece sacrebleu google-generativeai python-dotenv tqdm pyyaml tensorboard
 ```
 
-## Dataset
+### API Keys (Required for full features)
 
-- **PHOMT** (Vietnamese-English): Dataset song ngữ Việt-Anh từ VietAI
-- Subset: 300K-500K câu
-- Max sequence length: 128 tokens
-- Load trực tiếp từ Hugging Face Datasets
+Create `.env` file in project root:
+```bash
+GEMINI_API_KEY=your_gemini_api_key    # For Gemini evaluation
+HF_TOKEN=your_huggingface_token       # For dataset download
+```
 
-## Model Configuration
+- **GEMINI_API_KEY**: Get from [Google AI Studio](https://makersuite.google.com/app/apikey)
+- **HF_TOKEN**: Get from [HuggingFace Settings](https://huggingface.co/settings/tokens)
+
+### Translation
 
 ```python
-{
-    'd_model': 512,
-    'num_heads': 8,
-    'num_encoder_layers': 4-6,
-    'num_decoder_layers': 4-6,
-    'd_ff': 2048,
-    'max_len': 128,
-    'dropout': 0.1,
-    'batch_size': 8,
-    'gradient_accumulation_steps': 4
-}
+from src.evaluate import load_translator
+
+# VI → EN
+translator = load_translator(
+    checkpoint_path='checkpoints_vi_en/best_model.pt',
+    vocab_src_path='checkpoints_vi_en/tokenizers/tokenizer_vi.model',
+    vocab_tgt_path='checkpoints_vi_en/tokenizers/tokenizer_en.model',
+    config_path='config/config_vi_en.yaml'
+)
+
+result = translator.translate("Xin chào, bạn khỏe không?")
+print(result)  # Hello, how are you?
 ```
 
-## Hardware Requirements
+## 🏋️ Training
 
-- GPU: RTX 4060 Laptop (8GB VRAM)
-- RAM: 16GB
-- Training time: ~10-25 giờ (5-10 epochs)
+### On Kaggle (Recommended)
+1. Upload notebook `notebooks/train_kaggle_vi_en.ipynb` to Kaggle
+2. Enable GPU accelerator
+3. Run all cells
 
-## Installation
+### Resume Training
+1. Upload checkpoint + tokenizers + processed data
+2. Use `notebooks/train_kaggle_vi_en_resume.ipynb`
 
+### Local Training
+
+**1. Download dataset:**
 ```bash
-pip install -r requirements.txt
+python scripts/download_phomt.py
 ```
 
-## Các Thành Phần Chính
-
-### 1. Data Processing (notebooks/01-02)
-- Thu thập và làm sạch dữ liệu PHOMT
-- Tokenization (BPE hoặc word-level)
-- Xây dựng vocabulary
-- Padding/Truncation
-- DataLoader
-
-### 2. Model Architecture (src/ & notebooks/03)
-- **Scaled Dot-Product Attention**
-- **Multi-Head Attention**
-- **Positional Encoding** (Sinusoidal)
-- **Encoder Layer**: Self-Attention + FFN
-- **Decoder Layer**: Masked Self-Attention + Cross-Attention + FFN
-- **Full Transformer Model**
-
-### 3. Training (notebooks/04)
-- Loss function: Cross-Entropy với Label Smoothing
-- Optimizer: Adam/AdamW
-- Learning Rate Scheduler: Warmup + Decay
-- Mixed Precision Training (FP16)
-- Gradient Accumulation
-- Checkpointing
-
-### 4. Evaluation (notebooks/05)
-- Decoding strategies:
-  - Greedy Search
-  - Beam Search
-- Metrics:
-  - BLEU Score
-  - Perplexity
-- Attention visualization
-- Error analysis
-
-## Usage
-
-### Bước 1: Khám phá dữ liệu
+**2. Preprocess data:**
 ```bash
-jupyter notebook notebooks/01_data_exploration.ipynb
+# For VI → EN
+python scripts/preprocess_data.py --config config/config_vi_en.yaml
+
+# For EN → VI
+python scripts/preprocess_data.py --config config/config.yaml
 ```
 
-### Bước 2: Tiền xử lý
+**3. Train:**
 ```bash
-jupyter notebook notebooks/02_preprocessing.ipynb
+python -m src.train --config config/config_vi_en.yaml
 ```
 
-### Bước 3: Xây dựng model
+## ⚙️ Configuration
+
+### Config Files
+
+| File | Direction | Description |
+|------|-----------|-------------|
+| `config/config.yaml` | EN → VI | English to Vietnamese |
+| `config/config_vi_en.yaml` | VI → EN | Vietnamese to English |
+
+### Key Parameters
+
+```yaml
+# Model
+model:
+  d_model: 512              # Model dimension
+  num_heads: 8              # Attention heads
+  num_encoder_layers: 6     # Encoder depth
+  num_decoder_layers: 5     # Decoder depth
+
+# Training
+training:
+  batch_size: 64            # Batch size per GPU
+  gradient_accumulation_steps: 2  # Effective batch = 128
+  learning_rate: 0.0005     # Initial learning rate
+  epochs: 15                # Training epochs
+  warmup_steps: 2000        # LR warmup steps
+
+# Data
+data:
+  source: "local"           # "local", "huggingface", or "processed"
+  max_seq_len: 128          # Maximum sequence length
+```
+
+### Override Config via CLI
 ```bash
-jupyter notebook notebooks/03_model_building.ipynb
+# Change batch size
+python -m src.train --config config/config_vi_en.yaml --batch_size 32
+
+# Change learning rate
+python -m src.train --config config/config_vi_en.yaml --learning_rate 0.0003
 ```
 
-### Bước 4: Training
+## 🔧 Scripts
+
+| Script | Description |
+|--------|-------------|
+| `scripts/download_phomt.py` | Download PhoMT dataset from HuggingFace |
+| `scripts/preprocess_data.py` | Tokenize and prepare training data |
+
+### Preprocess Options
 ```bash
-jupyter notebook notebooks/04_training.ipynb
+python scripts/preprocess_data.py --help
+
+# Options:
+#   --config PATH       Config file (default: config/config.yaml)
+#   --max-samples N     Limit samples for testing
+#   --force-retrain     Retrain tokenizers even if exists
 ```
 
-### Bước 5: Evaluation
+## � Evaluation
+
+### BLEU Score
 ```bash
-jupyter notebook notebooks/05_evaluation.ipynb
+python -m src.evaluate \
+    --config config/config_vi_en.yaml \
+    --checkpoint checkpoints_vi_en/best_model.pt
 ```
 
-## Features
+### Gemini Evaluation (requires GEMINI_API_KEY)
+```bash
+python -m src.evaluate \
+    --config config/config_vi_en.yaml \
+    --checkpoint checkpoints_vi_en/best_model.pt \
+    --gemini
+```
 
-- ✅ Transformer architecture from scratch
-- ✅ Scaled Dot-Product Attention
-- ✅ Multi-Head Attention
-- ✅ Positional Encoding
-- ✅ Encoder-Decoder architecture
-- ✅ Beam Search decoding
-- ✅ BLEU score evaluation
-- ✅ Mixed precision training
-- ✅ Gradient accumulation
-- ✅ Learning rate warmup
-- ✅ Label smoothing
+### Interactive Translation
+```bash
+python -m src.evaluate \
+    --config config/config_vi_en.yaml \
+    --checkpoint checkpoints_vi_en/best_model.pt \
+    --interactive
+```
 
-## References
+## �📁 Project Structure
 
-- [Attention Is All You Need](https://arxiv.org/abs/1706.03762) - Original Transformer paper
-- [PHOMT Dataset](https://huggingface.co/datasets/VietAI/phomt) - VietAI Vietnamese-English dataset
-- [The Annotated Transformer](http://nlp.seas.harvard.edu/2018/04/03/attention.html)
+```
+├── config/          # Training configurations
+├── notebooks/       # Kaggle training notebooks
+├── src/
+│   ├── models/      # Transformer model
+│   ├── data/        # Dataset & tokenizer
+│   └── train.py     # Training script
+└── scripts/         # Utility scripts
+```
 
-## License
+## 📄 License
 
 MIT License
-
-## Author
-
-Bài tập lớn - Xử lý Ngôn ngữ Tự nhiên

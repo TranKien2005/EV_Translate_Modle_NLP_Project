@@ -443,12 +443,8 @@ if __name__ == "__main__":
     
     elif args.test or args.val:
         # Helper to convert config path to actual path
-        def get_data_path(config_path: str):
-            """Convert config path (data/...) to actual path using data_dir."""
-            if config_path.startswith('data/'):
-                relative_path = config_path[5:]  # Remove 'data/'
-            else:
-                relative_path = config_path
+        def get_data_path(relative_path: str):
+            """Join data_dir with relative path from config."""
             return config.paths.data_dir / relative_path
         
         if args.test:

@@ -1,6 +1,6 @@
 """
-Configuration loader with environment auto-detection.
-Supports: Local, Kaggle, Google Colab
+Configuration loader.
+Paths default to project-relative. Override from notebooks for Kaggle/Colab.
 """
 
 import os
@@ -8,15 +8,6 @@ import yaml
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
-
-
-def detect_environment() -> str:
-    """Detect the current running environment."""
-    if os.path.exists('/kaggle'):
-        return 'kaggle'
-    elif os.path.exists('/content'):
-        return 'colab'
-    return 'local'
 
 
 def get_project_root() -> Path:
@@ -28,28 +19,27 @@ def get_project_root() -> Path:
 
 @dataclass
 class PathConfig:
-    """Path configuration with environment-aware defaults."""
+    """Path configuration - read from YAML config."""
     data_dir: Path = field(default_factory=lambda: Path("data/"))
     checkpoint_dir: Path = field(default_factory=lambda: Path("checkpoints/"))
     log_dir: Path = field(default_factory=lambda: Path("logs/"))
     
-    def setup_for_environment(self, env: str, project_root: Path):
-        """Setup paths based on environment."""
-        if env == 'kaggle':
-            # Kaggle-specific paths (/kaggle/working is writable, /kaggle/input is read-only)
-            self.data_dir = Path('/kaggle/working/data/')
-            self.checkpoint_dir = Path('/kaggle/working/checkpoints/')
-            self.log_dir = Path('/kaggle/working/logs/')
-        elif env == 'colab':
-            # Colab-specific paths
-            self.data_dir = Path('/content/drive/MyDrive/data/')
-            self.checkpoint_dir = Path('/content/checkpoints/')
-            self.log_dir = Path('/content/logs/')
-        else:
-            # Local paths (relative to project root)
-            self.data_dir = project_root / "data"
-            self.checkpoint_dir = project_root / "checkpoints"
-            self.log_dir = project_root / "logs"
+    def setup(self, project_root: Path, paths_config: Optional[Dict[str, Any]] = None):
+        """Setup paths from YAML config.
+        
+        Args:
+            project_root: Project root directory
+            paths_config: 'paths' section from YAML config
+        """
+        # Get paths from config (or use defaults)
+        data_dir = paths_config.get('data_dir', 'data') if paths_config else 'data'
+        checkpoint_dir = paths_config.get('checkpoint_dir', 'checkpoints') if paths_config else 'checkpoints'
+        log_dir = paths_config.get('log_dir', 'logs') if paths_config else 'logs'
+        
+        # Convert to Path - if absolute, use as-is; if relative, join with project_root
+        self.data_dir = Path(data_dir) if Path(data_dir).is_absolute() else project_root / data_dir
+        self.checkpoint_dir = Path(checkpoint_dir) if Path(checkpoint_dir).is_absolute() else project_root / checkpoint_dir
+        self.log_dir = Path(log_dir) if Path(log_dir).is_absolute() else project_root / log_dir
     
     def create_dirs(self):
         """Create directories if they don't exist."""
@@ -66,9 +56,8 @@ class Config:
         
         Args:
             config_path: Path to YAML config file. If None, uses default.
-            overrides: Dictionary of config overrides.
+            overrides: Dictionary of config overrides (including paths).
         """
-        self.env = detect_environment()
         self.project_root = get_project_root()
         
         # Load base config
@@ -77,19 +66,26 @@ class Config:
         
         self._config = self._load_yaml(config_path)
         
-        # Apply overrides
+        # Apply overrides to config (including paths section)
         if overrides:
             self._apply_overrides(overrides)
         
-        # Setup paths
+        # Setup paths from YAML config 'paths' section
+        paths_config = self._config.get('paths', {})
+        # Merge any path overrides from overrides dict
+        if overrides:
+            for key in ['data_dir', 'checkpoint_dir', 'log_dir']:
+                if key in overrides:
+                    paths_config[key] = overrides[key]
+        
         self.paths = PathConfig()
-        self.paths.setup_for_environment(self.env, self.project_root)
+        self.paths.setup(self.project_root, paths_config)
         self.paths.create_dirs()
         
         # Parse config sections
         self._parse_config()
         
-        print(f"✓ Config loaded | Environment: {self.env}")
+        print(f"✓ Config loaded | data_dir: {self.paths.data_dir}")
     
     def _load_yaml(self, path: Path) -> dict:
         """Load YAML config file."""
@@ -113,21 +109,21 @@ class Config:
         deep_update(self._config, overrides)
     
     def _parse_config(self):
-        """Parse config into attributes."""
+        """Parse config into attributes. All values must be in YAML config."""
         # Data config
         data = self._config.get('data', {})
-        self.data_source = data.get('source', 'local')  # 'local', 'huggingface', or 'processed'
+        self.data_source = data['source']
         
         # Hugging Face dataset
-        self.dataset_name = data.get('dataset_name', 'vinai/PhoMT')
-        self.dataset_config = data.get('dataset_config', None)
+        self.dataset_name = data.get('dataset_name')
+        self.dataset_config = data.get('dataset_config')
         # Load HF token from environment variable (set in .env file)
         import os
         from dotenv import load_dotenv
         load_dotenv()
-        self.hf_token = os.getenv('HF_TOKEN', None)
+        self.hf_token = os.getenv('HF_TOKEN')
         
-        # Local file paths (raw data)
+        # Local file paths (raw data) - relative to data_dir
         self.train_src = data.get('train_src', '')
         self.train_tgt = data.get('train_tgt', '')
         self.val_src = data.get('val_src', '')
@@ -135,41 +131,41 @@ class Config:
         self.test_src = data.get('test_src', '')
         self.test_tgt = data.get('test_tgt', '')
         
-        # Processed data paths
-        self.processed_train = data.get('processed_train', 'data/processed/train.pt')
-        self.processed_val = data.get('processed_val', 'data/processed/val.pt')
-        self.processed_test = data.get('processed_test', 'data/processed/test.pt')
+        # Processed data paths - relative to data_dir
+        self.processed_train = data.get('processed_train', '')
+        self.processed_val = data.get('processed_val', '')
+        self.processed_test = data.get('processed_test', '')
         
         # Evaluation limits
         self.eval_max_samples_bleu = data.get('eval_max_samples_bleu', 1000)
         self.eval_max_samples_gemini = data.get('eval_max_samples_gemini', 200)
         
-        self.max_seq_len = data.get('max_seq_len', 128)
+        self.max_seq_len = data['max_seq_len']
         self.min_seq_len = data.get('min_seq_len', 1)
-        self.max_samples = data.get('max_samples', None)
-        self.src_vocab_size = data.get('src_vocab_size', 32000)
-        self.tgt_vocab_size = data.get('tgt_vocab_size', 32000)
+        self.max_samples = data.get('max_samples')
+        self.src_vocab_size = data['src_vocab_size']
+        self.tgt_vocab_size = data['tgt_vocab_size']
         
-        # Model config
-        model = self._config.get('model', {})
-        self.d_model = model.get('d_model', 512)
-        self.num_heads = model.get('num_heads', 8)
-        self.num_encoder_layers = model.get('num_encoder_layers', 6)
-        self.num_decoder_layers = model.get('num_decoder_layers', 6)
-        self.d_ff = model.get('d_ff', 2048)
-        self.dropout = model.get('dropout', 0.1)
+        # Model config - ALL REQUIRED
+        model = self._config['model']
+        self.d_model = model['d_model']
+        self.num_heads = model['num_heads']
+        self.num_encoder_layers = model['num_encoder_layers']
+        self.num_decoder_layers = model['num_decoder_layers']
+        self.d_ff = model['d_ff']
+        self.dropout = model['dropout']
         
-        # Training config
-        training = self._config.get('training', {})
-        self.batch_size = training.get('batch_size', 32)
-        self.gradient_accumulation_steps = training.get('gradient_accumulation_steps', 1)
-        self.epochs = training.get('epochs', 50)
-        self.learning_rate = training.get('learning_rate', 1e-4)
-        self.warmup_steps = training.get('warmup_steps', 4000)
-        self.label_smoothing = training.get('label_smoothing', 0.1)
-        self.gradient_clip = training.get('gradient_clip', 1.0)
-        self.weight_decay = training.get('weight_decay', 0.01)  # AdamW weight decay
-        self.min_lr = training.get('min_lr', 1e-6)  # Minimum LR for cosine scheduler
+        # Training config - ALL REQUIRED
+        training = self._config['training']
+        self.batch_size = training['batch_size']
+        self.gradient_accumulation_steps = training['gradient_accumulation_steps']
+        self.epochs = training['epochs']
+        self.learning_rate = training['learning_rate']
+        self.warmup_steps = training['warmup_steps']
+        self.label_smoothing = training['label_smoothing']
+        self.gradient_clip = training['gradient_clip']
+        self.weight_decay = training['weight_decay']
+        self.min_lr = training['min_lr']
         
         # Output files config
         output_files = self._config.get('output_files', {})

@@ -1,6 +1,29 @@
 # =============================================================================
 # Transformer English-Vietnamese Translation Model Configuration
 # =============================================================================
+#
+# CONFIGURABLE (can change here):
+#   - Paths: data_dir, checkpoint_dir, log_dir
+#   - Model: d_model, num_heads, num_layers, d_ff, dropout
+#   - Training: batch_size, learning_rate, epochs, warmup_steps, etc.
+#   - Data: paths, vocab_size, max_seq_len
+#
+# HARDCODED (need to modify src/train.py):
+#   - Optimizer: AdamW (line ~146)
+#   - Scheduler: CosineAnnealingWarmRestarts (line ~180)
+#   - Loss: CrossEntropyLoss with label smoothing
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Paths Configuration
+# All paths are relative to project root OR absolute paths
+# For Kaggle/Colab, change to: /kaggle/working/... or /content/...
+# -----------------------------------------------------------------------------
+paths:
+  data_dir: "data"                           # Data directory
+  checkpoint_dir: "checkpoints"              # Model checkpoints  
+  log_dir: "logs"                            # Training logs
 
 # -----------------------------------------------------------------------------
 # Data Configuration
@@ -17,17 +40,18 @@ data:
   # NOTE: hf_token should be set in .env file, not here!
   
   # Local file paths (PhoMT raw data)
-  train_src: "data/PhoMT/detokenization/train/train.en"
-  train_tgt: "data/PhoMT/detokenization/train/train.vi"
-  val_src: "data/PhoMT/detokenization/dev/dev.en"
-  val_tgt: "data/PhoMT/detokenization/dev/dev.vi"
-  test_src: "data/PhoMT/detokenization/test/test.en"
-  test_tgt: "data/PhoMT/detokenization/test/test.vi"
+  # Paths are relative to data_dir
+  train_src: "PhoMT/detokenization/train/train.en"
+  train_tgt: "PhoMT/detokenization/train/train.vi"
+  val_src: "PhoMT/detokenization/dev/dev.en"
+  val_tgt: "PhoMT/detokenization/dev/dev.vi"
+  test_src: "PhoMT/detokenization/test/test.en"
+  test_tgt: "PhoMT/detokenization/test/test.vi"
   
-  # Processed data paths (after running preprocess_data.py)
-  processed_train: "data/processed/train.pt"
-  processed_val: "data/processed/val.pt"
-  processed_test: "data/processed/test.pt"
+  # Processed data paths (relative to data_dir)
+  processed_train: "processed/train.pt"
+  processed_val: "processed/val.pt"
+  processed_test: "processed/test.pt"
   
   # Evaluation limits (to save time/cost)
   eval_max_samples_bleu: 1000  # For BLEU score
@@ -61,7 +85,7 @@ training:
   batch_size: 64         # Good for most GPUs
   gradient_accumulation_steps: 1  # Effective batch = 64
   epochs: 15             # More epochs for smaller model
-  learning_rate: 0.0008  # Slightly lower for stability
+  learning_rate: 0.0005  # Slightly lower for stability
   warmup_steps: 1500     # Shorter warmup (faster start)
   label_smoothing: 0.1   # Standard value
   gradient_clip: 1.0
