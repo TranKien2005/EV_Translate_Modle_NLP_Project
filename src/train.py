@@ -5,7 +5,7 @@ Training script for Transformer translation model.
 import torch
 import torch.nn as nn
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR, ReduceLROnPlateau
 from torch.cuda.amp import autocast, GradScaler
 from typing import Optional, Dict, Any
 from pathlib import Path
@@ -141,7 +141,7 @@ class Trainer:
         self.logger.log(f"Model parameters: {self.model.count_parameters():,}")
     
     def setup_optimizer(self):
-        """Initialize optimizer and scheduler with AdamW + Cosine Annealing."""
+        """Initialize optimizer and scheduler."""
         # AdamW: Adam with decoupled weight decay (better regularization)
         self.optimizer = AdamW(
             self.model.parameters(),
@@ -151,37 +151,57 @@ class Trainer:
             weight_decay=self.config.weight_decay
         )
         
-        # Calculate total training steps
-        steps_per_epoch = len(self.train_loader)
-        total_steps = steps_per_epoch * self.config.epochs
-        warmup_steps = self.config.warmup_steps
+        # Get scheduler type from config (default: cosine)
+        scheduler_type = getattr(self.config, 'scheduler', 'cosine')
+        self.scheduler_type = scheduler_type
         min_lr = self.config.min_lr
         
         self.logger.log(f"Optimizer: AdamW (weight_decay={self.config.weight_decay})")
-        self.logger.log(f"Scheduler: Cosine Annealing with {warmup_steps} warmup steps")
-        self.logger.log(f"Total steps: {total_steps}, min_lr: {min_lr}")
         
-        # Linear warmup scheduler
-        warmup_scheduler = LinearLR(
-            self.optimizer,
-            start_factor=1e-8,
-            end_factor=1.0,
-            total_iters=warmup_steps
-        )
-        
-        # Cosine annealing scheduler (after warmup)
-        cosine_scheduler = CosineAnnealingLR(
-            self.optimizer,
-            T_max=total_steps - warmup_steps,
-            eta_min=min_lr
-        )
-        
-        # Combine: warmup first, then cosine annealing
-        self.scheduler = SequentialLR(
-            self.optimizer,
-            schedulers=[warmup_scheduler, cosine_scheduler],
-            milestones=[warmup_steps]
-        )
+        if scheduler_type == "reduce_on_plateau":
+            # ReduceLROnPlateau: reduce LR when val_loss stops improving
+            patience = getattr(self.config, 'scheduler_patience', 2)
+            factor = getattr(self.config, 'scheduler_factor', 0.5)
+            
+            self.scheduler = ReduceLROnPlateau(
+                self.optimizer,
+                mode='min',
+                factor=factor,
+                patience=patience,
+                min_lr=min_lr,
+                verbose=True
+            )
+            self.logger.log(f"Scheduler: ReduceLROnPlateau (patience={patience}, factor={factor})")
+        else:
+            # Default: Cosine Annealing with warmup
+            steps_per_epoch = len(self.train_loader)
+            total_steps = steps_per_epoch * self.config.epochs
+            warmup_steps = self.config.warmup_steps
+            
+            self.logger.log(f"Scheduler: Cosine Annealing with {warmup_steps} warmup steps")
+            self.logger.log(f"Total steps: {total_steps}, min_lr: {min_lr}")
+            
+            # Linear warmup scheduler
+            warmup_scheduler = LinearLR(
+                self.optimizer,
+                start_factor=1e-8,
+                end_factor=1.0,
+                total_iters=warmup_steps
+            )
+            
+            # Cosine annealing scheduler (after warmup)
+            cosine_scheduler = CosineAnnealingLR(
+                self.optimizer,
+                T_max=total_steps - warmup_steps,
+                eta_min=min_lr
+            )
+            
+            # Combine: warmup first, then cosine annealing
+            self.scheduler = SequentialLR(
+                self.optimizer,
+                schedulers=[warmup_scheduler, cosine_scheduler],
+                milestones=[warmup_steps]
+            )
     
     def setup_criterion(self):
         """Initialize loss function."""
@@ -360,7 +380,9 @@ class Trainer:
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.gradient_clip)
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
-                self.scheduler.step()
+                # Only step scheduler here for cosine (not reduce_on_plateau)
+                if self.scheduler_type != "reduce_on_plateau":
+                    self.scheduler.step()
                 self.optimizer.zero_grad()
             
             # Update metrics (use unscaled loss for logging)
@@ -369,7 +391,10 @@ class Trainer:
             metrics.update(unscaled_loss, num_tokens)
             
             # Update progress bar with more info
-            current_lr = self.scheduler.get_last_lr()[0]
+            if self.scheduler_type == "reduce_on_plateau":
+                current_lr = self.optimizer.param_groups[0]['lr']
+            else:
+                current_lr = self.scheduler.get_last_lr()[0]
             pbar.set_postfix({
                 'loss': f"{metrics.avg_loss:.4f}",
                 'ppl': f"{metrics.perplexity:.1f}",
@@ -430,6 +455,10 @@ class Trainer:
             
             # Validate
             val_metrics = self.validate()
+            
+            # Step scheduler for reduce_on_plateau (needs val_loss)
+            if self.scheduler_type == "reduce_on_plateau":
+                self.scheduler.step(val_metrics['loss'])
             
             # Log
             self.logger.log_epoch(epoch, train_metrics, val_metrics)
