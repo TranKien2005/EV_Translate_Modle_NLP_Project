@@ -177,7 +177,7 @@ def main():
     print("="*60)
     print("Data Preprocessing Script")
     print("="*60)
-    print(f"Config loaded | Env: {config.env}")
+    print(f"Config loaded | Device: {config.device}")
     
     # Setup paths - use data_dir for data files
     project_root = config.project_root

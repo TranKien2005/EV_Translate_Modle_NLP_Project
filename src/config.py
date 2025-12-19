@@ -218,7 +218,7 @@ class Config:
         return self.paths.checkpoint_dir / filename
     
     def __repr__(self):
-        return f"Config(env={self.env}, device={self.device}, d_model={self.d_model})"
+        return f"Config(device={self.device}, d_model={self.d_model})"
 
 
 # Convenience function
