@@ -61,8 +61,8 @@ data:
   max_samples: null
   
   # Vocabulary
-  src_vocab_size: 16000  # Vietnamese vocab
-  tgt_vocab_size: 16000  # English vocab
+  src_vocab_size: 32000  # Vietnamese vocab
+  tgt_vocab_size: 32000  # English vocab
 
 # -----------------------------------------------------------------------------
 # Model Configuration (Larger model for VI->EN, no time pressure)
@@ -96,7 +96,7 @@ training:
   
   # Scheduler
   min_lr: 1.0e-6
-  restart_epochs: 3      # Warm restart mỗi N epochs
+  restart_epochs: 2      # Warm restart mỗi N epochs
   t_mult: 2              # Mỗi cycle dài gấp đôi cycle trước
   warmup_start_factor: 1.0e-8  # LR khởi đầu = base_lr * factor
   
