@@ -112,15 +112,6 @@ data:
   max_seq_len: 128          # Maximum sequence length
 ```
 
-### Override Config via CLI
-```bash
-# Change batch size
-python -m src.train --config config/config_vi_en.yaml --batch_size 32
-
-# Change learning rate
-python -m src.train --config config/config_vi_en.yaml --learning_rate 0.0003
-```
-
 ## 🔧 Scripts
 
 | Script | Description |

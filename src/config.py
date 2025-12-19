@@ -167,6 +167,18 @@ class Config:
         self.weight_decay = training['weight_decay']
         self.min_lr = training['min_lr']
         
+        # Scheduler warm restart config
+        self.restart_epochs = training.get('restart_epochs', 3)
+        self.t_mult = training.get('t_mult', 2)
+        self.warmup_start_factor = training.get('warmup_start_factor', 1e-8)
+        
+        # Optimizer betas/eps (already in YAML)
+        self.betas = tuple(training.get('betas', [0.9, 0.98]))
+        self.eps = training.get('eps', 1e-9)
+        
+        # Reproducibility
+        self.seed = training.get('seed', 42)
+        
         # Output files config
         output_files = self._config.get('output_files', {})
         self.tokenizer_src_file = output_files.get('tokenizer_src', 'tokenizer_src.model')

@@ -81,10 +81,10 @@ model:
 # -----------------------------------------------------------------------------
 training:
   batch_size: 64         # Smaller batch for larger model (VRAM)
-  gradient_accumulation_steps: 2  # Effective batch = 64
+  gradient_accumulation_steps: 4  # Effective batch = 64
   epochs: 15             # More epochs since no time pressure
-  learning_rate: 0.0005  # Lower LR for larger model (more stable)
-  warmup_steps: 2000     # More warmup for larger model
+  learning_rate: 0.001   # 1e-3 theo paper cho d_model=512
+  warmup_steps: 4000     # More warmup for higher LR
   label_smoothing: 0.1
   gradient_clip: 1.0
   
@@ -96,6 +96,12 @@ training:
   
   # Scheduler
   min_lr: 1.0e-6
+  restart_epochs: 3      # Warm restart mỗi N epochs
+  t_mult: 2              # Mỗi cycle dài gấp đôi cycle trước
+  warmup_start_factor: 1.0e-8  # LR khởi đầu = base_lr * factor
+  
+  # Reproducibility
+  seed: 42
   
   # Checkpointing
   save_every: 1

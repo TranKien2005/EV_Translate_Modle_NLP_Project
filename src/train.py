@@ -48,7 +48,7 @@ class Trainer:
         self.config = config
         
         # Setup
-        set_seed(42)
+        set_seed(self.config.seed)
         self.device = get_device(config.device)
         
         # Logger
@@ -146,8 +146,8 @@ class Trainer:
         self.optimizer = AdamW(
             self.model.parameters(),
             lr=self.config.learning_rate,
-            betas=(0.9, 0.98),
-            eps=1e-9,
+            betas=self.config.betas,
+            eps=self.config.eps,
             weight_decay=self.config.weight_decay
         )
         
@@ -160,8 +160,8 @@ class Trainer:
         
         # T_0: steps per restart cycle (3 epochs)
         # T_mult: each cycle is T_mult times longer than previous
-        restart_epochs = getattr(self.config, 'restart_epochs', 3)
-        t_mult = getattr(self.config, 't_mult', 2)
+        restart_epochs = self.config.restart_epochs
+        t_mult = self.config.t_mult
         T_0 = steps_per_epoch * restart_epochs
         
         self.logger.log(f"Scheduler: Cosine Annealing Warm Restarts")
@@ -172,7 +172,7 @@ class Trainer:
         # Linear warmup scheduler
         warmup_scheduler = LinearLR(
             self.optimizer,
-            start_factor=1e-8,
+            start_factor=self.config.warmup_start_factor,
             end_factor=1.0,
             total_iters=warmup_steps
         )

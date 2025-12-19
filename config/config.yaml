@@ -83,10 +83,10 @@ model:
 # -----------------------------------------------------------------------------
 training:
   batch_size: 64         # Good for most GPUs
-  gradient_accumulation_steps: 1  # Effective batch = 64
+  gradient_accumulation_steps: 4  # Effective batch = 64
   epochs: 15             # More epochs for smaller model
-  learning_rate: 0.0005  # Slightly lower for stability
-  warmup_steps: 1500     # Shorter warmup (faster start)
+  learning_rate: 0.001   # 1e-3 theo paper cho d_model=256
+  warmup_steps: 2000     # Warmup for stability
   label_smoothing: 0.1   # Standard value
   gradient_clip: 1.0
   
@@ -98,6 +98,12 @@ training:
   
   # Scheduler: Cosine Annealing with Linear Warmup
   min_lr: 1.0e-6             # Minimum LR at end of training
+  restart_epochs: 3          # Warm restart mỗi N epochs
+  t_mult: 2                  # Mỗi cycle dài gấp đôi cycle trước
+  warmup_start_factor: 1.0e-8  # LR khởi đầu = base_lr * factor
+  
+  # Reproducibility
+  seed: 42
   
   # Checkpointing
   save_every: 1           # Save every N epochs
